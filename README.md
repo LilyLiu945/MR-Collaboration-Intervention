@@ -89,33 +89,6 @@ Model evaluation will follow:
 * Correlation with task performance (completion time, interaction diversity)
 * Interpretability analysis (feature importance, state transitions, network shifts)
 
-## Repository Structure
-"""
-MR-Collaboration-Intervention/
-│
-├── README.md
-├── proposal/
-│   └── MR_Proposal.pdf
-│
-├── data/                    # (ignored — contains private dataset)
-├── notebooks/
-│   ├── exploratory_analysis.ipynb
-│   ├── feature_engineering.ipynb
-│   └── modeling.ipynb
-│
-├── src/
-│   ├── preprocessing.py
-│   ├── features.py
-│   ├── model_hmm.py
-│   ├── model_lstm.py
-│   ├── model_xgboost.py
-│   └── evaluation.py
-│
-└── results/
-    ├── figures/
-    └── metrics/
-"""
-
 ## Data Privacy Notice
 
 This repository does not contain the original MR dataset due to privacy and research-use restrictions.
