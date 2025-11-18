@@ -48,7 +48,7 @@ Applications include education, remote collaboration, and team training in MR.
 * Object interaction logs (timestamps, participant actions)
 
 ## Technical Approach
-1. Feature Engineering
+### Feature Engineering
 
 We aggregate pairwise and network-level metrics to capture:
 
@@ -56,26 +56,26 @@ We aggregate pairwise and network-level metrics to capture:
 * Macro-level coordination patterns (cohesion, dominance, engagement)
 * Temporal evolution of group dynamics across the task
 
-2. Modeling Approaches
+### Modeling Approaches
 
 We compare multiple families of models to balance interpretability and predictive power:
 
-🔹 Hidden Markov Models (HMMs)
+#### Hidden Markov Models (HMMs)
 
 * Reveal latent coordination states
 * Interpret transitions from “balanced” to “imbalanced” teamwork
 
-🔹 Long Short-Term Memory Networks (LSTMs)
+#### Long Short-Term Memory Networks (LSTMs)
 
 * Capture long-range temporal dependencies
 * Detect gradual shifts toward low-efficiency collaboration
 
-🔹 Random Forest & XGBoost
+#### Random Forest & XGBoost
 
 * Supervised classification of time windows as __stable vs. intervention-needed__
 * Robust to noise, provide feature importance
 
-🔹 Network Analytics
+#### Network Analytics
 
 * Identify how changes in density, reciprocity, and centrality correlate with performance drops
 * Enables interpretable, sociometric insights
