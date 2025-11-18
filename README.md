@@ -19,9 +19,7 @@ This project investigates whether behavioral cues in MR can predict when system-
 We aim to build interpretable, data-driven models that:
 
 * Detect early signs of imbalance or poor coordination
-
 * Predict upcoming low-efficiency collaboration periods
-
 * Suggest optimal timing for system interventions
 
 Applications include education, remote collaboration, and team training in MR.
@@ -74,7 +72,7 @@ We compare multiple families of models to balance interpretability and predictiv
 
 🔹 Random Forest & XGBoost
 
-* Supervised classification of time windows as ** stable vs. intervention-needed
+* Supervised classification of time windows as __stable vs. intervention-needed__
 * Robust to noise, provide feature importance
 
 🔹 Network Analytics
