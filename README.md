@@ -88,3 +88,48 @@ Model evaluation will follow:
 * Window-level prediction precision for intervention timing
 * Correlation with task performance (completion time, interaction diversity)
 * Interpretability analysis (feature importance, state transitions, network shifts)
+
+## Repository Structure
+"""
+MR-Collaboration-Intervention/
+│
+├── README.md
+├── proposal/
+│   └── MR_Proposal.pdf
+│
+├── data/                    # (ignored — contains private dataset)
+├── notebooks/
+│   ├── exploratory_analysis.ipynb
+│   ├── feature_engineering.ipynb
+│   └── modeling.ipynb
+│
+├── src/
+│   ├── preprocessing.py
+│   ├── features.py
+│   ├── model_hmm.py
+│   ├── model_lstm.py
+│   ├── model_xgboost.py
+│   └── evaluation.py
+│
+└── results/
+    ├── figures/
+    └── metrics/
+"""
+
+## Data Privacy Notice
+
+This repository does not contain the original MR dataset due to privacy and research-use restrictions.
+
+Data files are:
+
+* Stored locally for each collaborator
+* Shared only through the private internal folder
+* Automatically excluded via "".gitignore""
+
+## Future Work
+
+* Real-time intervention prediction model
+* Visualization of collaboration state transitions
+* Graph-based temporal modeling
+* Extensions toward causal inference for collaboration outcomes
+* Preparing results for potential workshop or poster submission
