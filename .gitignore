@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# All output directories
+outputs/
+pairwise_outputs/
+session_output/
+task_metrics_output/
+windowed_output/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
