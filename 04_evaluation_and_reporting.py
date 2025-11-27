@@ -32,7 +32,7 @@ try:
     TF_AVAILABLE = True
 except ImportError:
     TF_AVAILABLE = False
-    print("错误: TensorFlow未安装")
+    print("Error: TensorFlow not installed")
     exit(1)
 
 from sklearn.metrics import (
@@ -58,7 +58,7 @@ VISUALIZATIONS_DIR = OUTPUT_DIR / "visualizations"
 VISUALIZATIONS_DIR.mkdir(exist_ok=True)
 
 # 多分类配置（需要与01_hmm_modeling.py和03_time_series_training.py一致）
-N_CLASSES = 4  # 3或4分类，必须与其他脚本一致
+N_CLASSES = 2  # 2、3或4分类，必须与其他脚本一致（推荐2分类：需要干预 vs 不需要干预）
 
 # 随机种子
 RANDOM_STATE = 42
@@ -74,10 +74,10 @@ def load_intermediate(name, directory=None):
         directory = INTERMEDIATE_DIR
     filepath = directory / f"{name}.pkl"
     if not filepath.exists():
-        raise FileNotFoundError(f"文件不存在: {filepath}")
+        raise FileNotFoundError(f"File not found: {filepath}")
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
-    print(f"已加载: {filepath}")
+    print(f"Loaded: {filepath}")
     return data
 
 
@@ -88,7 +88,7 @@ def save_intermediate(name, data, directory=None):
     filepath = directory / f"{name}.pkl"
     with open(filepath, 'wb') as f:
         pickle.dump(data, f)
-    print(f"已保存: {filepath}")
+    print(f"Saved: {filepath}")
 
 
 def create_sequences_by_group(data_df, feature_cols, label_array, sequence_length=10):
@@ -169,12 +169,12 @@ def evaluate_model(y_true, y_pred, y_proba=None, n_classes=2):
 # ============================================================================
 
 print("\n" + "="*80)
-print("04 - 模型评估与报告")
+print("04 - Model Evaluation and Reporting")
 print("="*80)
 
 # 1. 加载数据
 print("\n" + "-"*80)
-print("1. 加载数据和模型")
+print("1. Load Data and Model")
 print("-"*80)
 
 test_data = load_intermediate('test_data')
@@ -183,9 +183,9 @@ top_m_features = load_intermediate('top_m_features')
 best_model_name = load_intermediate('best_model_name')
 sequence_length = 3  # 与训练时一致（03_time_series_training.py中的SEQUENCE_CONFIG）
 
-print(f"\n最佳模型: {best_model_name}")
-print(f"测试集大小: {len(test_data)} 窗口")
-print(f"特征数: {len(top_m_features)}")
+print(f"\nBest model: {best_model_name}")
+print(f"Test set size: {len(test_data)} windows")
+print(f"Number of features: {len(top_m_features)}")
 
 # 加载最佳模型
 model_path = MODELS_DIR / f'{best_model_name.lower()}_final.h5'
@@ -193,11 +193,11 @@ if not model_path.exists():
     model_path = MODELS_DIR / f'{best_model_name.lower()}_best.h5'
 
 best_model = keras.models.load_model(str(model_path))
-print(f"✓ 模型已加载: {model_path}")
+print(f"✓ Model loaded: {model_path}")
 
 # 2. 创建测试序列
 print("\n" + "-"*80)
-print("2. 创建测试序列")
+print("2. Create Test Sequences")
 print("-"*80)
 
 X_test_seq, y_test_seq, test_groups = create_sequences_by_group(
@@ -205,41 +205,43 @@ X_test_seq, y_test_seq, test_groups = create_sequences_by_group(
     sequence_length=sequence_length
 )
 
-print(f"测试序列形状: {X_test_seq.shape}")
-print(f"标签形状: {y_test_seq.shape}")
+print(f"Test sequence shape: {X_test_seq.shape}")
+print(f"Label shape: {y_test_seq.shape}")
 
 # 3. 模型预测
 print("\n" + "-"*80)
-print("3. 模型预测")
+print("3. Model Prediction")
 print("-"*80)
 
 y_test_pred_proba = best_model.predict(X_test_seq)
-if N_CLASSES > 2:
-    y_test_pred = np.argmax(y_test_pred_proba, axis=1)  # 多分类：取概率最大的类别
-    y_test_proba = y_test_pred_proba  # 完整概率矩阵用于多分类AUC
+# 对于2分类和多分类，都使用argmax（因为输出层是softmax，输出n_classes个概率值）
+y_test_pred = np.argmax(y_test_pred_proba, axis=1)  # 取概率最大的类别
+if N_CLASSES == 2:
+    # 2分类：y_test_pred_proba形状是(N, 2)，y_test_proba取第二列（类别1的概率）用于AUC计算
+    y_test_proba = y_test_pred_proba[:, 1] if y_test_pred_proba.shape[1] > 1 else y_test_pred_proba.flatten()
 else:
-    y_test_pred = (y_test_pred_proba > 0.5).astype(int).flatten()
-    y_test_proba = y_test_pred_proba.flatten()
+    # 多分类：使用完整概率矩阵
+    y_test_proba = y_test_pred_proba
 
-print(f"预测完成")
+print(f"Prediction completed")
 if N_CLASSES == 4:
-    print(f"预测标签分布: 0={np.sum(y_test_pred == 0)}, 1={np.sum(y_test_pred == 1)}, 2={np.sum(y_test_pred == 2)}, 3={np.sum(y_test_pred == 3)}")
-    print(f"真实标签分布: 0={np.sum(y_test_seq == 0)}, 1={np.sum(y_test_seq == 1)}, 2={np.sum(y_test_seq == 2)}, 3={np.sum(y_test_seq == 3)}")
+    print(f"Predicted label distribution: 0={np.sum(y_test_pred == 0)}, 1={np.sum(y_test_pred == 1)}, 2={np.sum(y_test_pred == 2)}, 3={np.sum(y_test_pred == 3)}")
+    print(f"True label distribution: 0={np.sum(y_test_seq == 0)}, 1={np.sum(y_test_seq == 1)}, 2={np.sum(y_test_seq == 2)}, 3={np.sum(y_test_seq == 3)}")
 elif N_CLASSES == 3:
-    print(f"预测标签分布: 0={np.sum(y_test_pred == 0)}, 1={np.sum(y_test_pred == 1)}, 2={np.sum(y_test_pred == 2)}")
-    print(f"真实标签分布: 0={np.sum(y_test_seq == 0)}, 1={np.sum(y_test_seq == 1)}, 2={np.sum(y_test_seq == 2)}")
+    print(f"Predicted label distribution: 0={np.sum(y_test_pred == 0)}, 1={np.sum(y_test_pred == 1)}, 2={np.sum(y_test_pred == 2)}")
+    print(f"True label distribution: 0={np.sum(y_test_seq == 0)}, 1={np.sum(y_test_seq == 1)}, 2={np.sum(y_test_seq == 2)}")
 else:
-    print(f"预测标签分布: 0={np.sum(y_test_pred == 0)}, 1={np.sum(y_test_pred == 1)}")
-    print(f"真实标签分布: 0={np.sum(y_test_seq == 0)}, 1={np.sum(y_test_seq == 1)}")
+    print(f"Predicted label distribution: 0={np.sum(y_test_pred == 0)}, 1={np.sum(y_test_pred == 1)}")
+    print(f"True label distribution: 0={np.sum(y_test_seq == 0)}, 1={np.sum(y_test_seq == 1)}")
 
 # 4. 整体性能评估
 print("\n" + "-"*80)
-print("4. 整体性能评估")
+print("4. Overall Performance Evaluation")
 print("-"*80)
 
 test_metrics = evaluate_model(y_test_seq, y_test_pred, y_test_proba, n_classes=N_CLASSES)
 
-print(f"\n测试集性能:")
+print(f"\nTest set performance:")
 print(f"  Accuracy: {test_metrics['accuracy']:.4f}")
 print(f"  Precision: {test_metrics['precision']:.4f}")
 print(f"  Recall: {test_metrics['recall']:.4f}")
@@ -248,11 +250,11 @@ print(f"  AUC-ROC: {test_metrics['auc_roc']:.4f}")
 
 # 混淆矩阵
 cm = confusion_matrix(y_test_seq, y_test_pred)
-print(f"\n混淆矩阵:")
+print(f"\nConfusion matrix:")
 print(cm)
 
 # 分类报告
-print(f"\n分类报告:")
+print(f"\nClassification report:")
 # 动态检测实际存在的类别
 unique_labels = sorted(np.unique(np.concatenate([y_test_seq, y_test_pred])))
 target_names = [f'状态{i}' for i in unique_labels]
@@ -261,7 +263,7 @@ print(classification_report(y_test_seq, y_test_pred, target_names=target_names, 
 
 # 5. 按组分析
 print("\n" + "-"*80)
-print("5. 按组分析性能")
+print("5. Performance Analysis by Group")
 print("-"*80)
 
 group_metrics = {}
@@ -273,14 +275,14 @@ for group in np.unique(test_groups):
     
     if len(group_y_true) > 0:
         group_metrics[group] = evaluate_model(group_y_true, group_y_pred, group_y_proba, n_classes=N_CLASSES)
-        print(f"\n组 {group}:")
-        print(f"  样本数: {len(group_y_true)}")
+        print(f"\nGroup {group}:")
+        print(f"  Sample count: {len(group_y_true)}")
         print(f"  F1 Score: {group_metrics[group]['f1_score']:.4f}")
         print(f"  Accuracy: {group_metrics[group]['accuracy']:.4f}")
 
 # 6. 保存结果
 print("\n" + "-"*80)
-print("6. 保存结果")
+print("6. Save Results")
 print("-"*80)
 
 save_intermediate('test_predictions', y_test_pred)
@@ -289,26 +291,26 @@ save_intermediate('group_metrics', group_metrics)
 
 # 7. 可视化
 print("\n" + "-"*80)
-print("7. 生成可视化")
+print("7. Generate Visualizations")
 print("-"*80)
 
 # 7.1 混淆矩阵
 plt.figure(figsize=(8, 6))
 if N_CLASSES == 4:
-    labels = ['状态0', '状态1', '状态2', '状态3']
+    labels = ['State 0', 'State 1', 'State 2', 'State 3']
 elif N_CLASSES == 3:
-    labels = ['类别0', '类别1', '类别2']
+    labels = ['Class 0', 'Class 1', 'Class 2']
 else:
-    labels = ['无需干预', '需要干预']
+    labels = ['No Intervention', 'Intervention Needed']
 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
             xticklabels=labels,
             yticklabels=labels)
-plt.title('测试集混淆矩阵')
-plt.ylabel('真实标签')
-plt.xlabel('预测标签')
+plt.title('Test Set Confusion Matrix')
+plt.ylabel('True Label')
+plt.xlabel('Predicted Label')
 plt.tight_layout()
 plt.savefig(VISUALIZATIONS_DIR / 'test_confusion_matrix.png', dpi=300)
-print(f"✓ 混淆矩阵已保存: {VISUALIZATIONS_DIR / 'test_confusion_matrix.png'}")
+print(f"✓ Confusion matrix saved: {VISUALIZATIONS_DIR / 'test_confusion_matrix.png'}")
 
 # 7.2 组性能对比
 if len(group_metrics) > 0:
@@ -319,46 +321,46 @@ if len(group_metrics) > 0:
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     
     ax1.bar(groups, f1_scores)
-    ax1.set_xlabel('组')
+    ax1.set_xlabel('Group')
     ax1.set_ylabel('F1 Score')
-    ax1.set_title('各组F1 Score')
+    ax1.set_title('F1 Score by Group')
     ax1.set_ylim([0, 1])
     
     ax2.bar(groups, accuracies)
-    ax2.set_xlabel('组')
+    ax2.set_xlabel('Group')
     ax2.set_ylabel('Accuracy')
-    ax2.set_title('各组Accuracy')
+    ax2.set_title('Accuracy by Group')
     ax2.set_ylim([0, 1])
     
     plt.tight_layout()
     plt.savefig(VISUALIZATIONS_DIR / 'group_performance.png', dpi=300)
-    print(f"✓ 组性能对比已保存: {VISUALIZATIONS_DIR / 'group_performance.png'}")
+    print(f"✓ Group performance comparison saved: {VISUALIZATIONS_DIR / 'group_performance.png'}")
 
 # 8. 生成最终报告
 print("\n" + "-"*80)
-print("8. 生成最终评估报告")
+print("8. Generate Final Evaluation Report")
 print("-"*80)
 
 report_lines = []
 report_lines.append("=" * 60)
-report_lines.append("最终评估报告")
+report_lines.append("Final Evaluation Report")
 report_lines.append("=" * 60)
-report_lines.append(f"\n模型信息:")
-report_lines.append(f"  最佳模型: {best_model_name}")
-report_lines.append(f"  特征数: {len(top_m_features)}")
-report_lines.append(f"  序列长度: {sequence_length}")
-report_lines.append(f"\n测试集整体性能:")
+report_lines.append(f"\nModel Information:")
+report_lines.append(f"  Best model: {best_model_name}")
+report_lines.append(f"  Number of features: {len(top_m_features)}")
+report_lines.append(f"  Sequence length: {sequence_length}")
+report_lines.append(f"\nTest Set Overall Performance:")
 report_lines.append(f"  Accuracy: {test_metrics['accuracy']:.4f}")
 report_lines.append(f"  Precision: {test_metrics['precision']:.4f}")
 report_lines.append(f"  Recall: {test_metrics['recall']:.4f}")
 report_lines.append(f"  F1 Score: {test_metrics['f1_score']:.4f}")
 report_lines.append(f"  AUC-ROC: {test_metrics['auc_roc']:.4f}")
-report_lines.append(f"\n混淆矩阵:")
+report_lines.append(f"\nConfusion Matrix:")
 report_lines.append(f"  [[{cm[0,0]}, {cm[0,1]}],")
 report_lines.append(f"   [{cm[1,0]}, {cm[1,1]}]]")
-report_lines.append(f"\n各组性能:")
+report_lines.append(f"\nPerformance by Group:")
 for group, metrics in sorted(group_metrics.items()):
-    report_lines.append(f"\n组 {group}:")
+    report_lines.append(f"\nGroup {group}:")
     report_lines.append(f"  F1 Score: {metrics['f1_score']:.4f}")
     report_lines.append(f"  Accuracy: {metrics['accuracy']:.4f}")
     report_lines.append(f"  Precision: {metrics['precision']:.4f}")
@@ -370,10 +372,10 @@ print(report_text)
 with open(REPORTS_DIR / "final_evaluation_report.txt", 'w', encoding='utf-8') as f:
     f.write(report_text)
 
-print(f"\n✓ 最终报告已保存到 {REPORTS_DIR / 'final_evaluation_report.txt'}")
+print(f"\n✓ Final report saved to {REPORTS_DIR / 'final_evaluation_report.txt'}")
 
 print("\n" + "="*80)
-print("模型评估完成！")
+print("Model evaluation completed!")
 print("="*80)
-print("\n所有结果已保存到 outputs/ 目录")
+print("\nAll results saved to outputs/ directory")
 

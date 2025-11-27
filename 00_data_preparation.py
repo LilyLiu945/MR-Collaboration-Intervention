@@ -68,7 +68,7 @@ def save_intermediate(name, data, directory=None):
     filepath = directory / f"{name}.pkl"
     with open(filepath, 'wb') as f:
         pickle.dump(data, f)
-    print(f"已保存: {filepath}")
+    print(f"Saved: {filepath}")
 
 
 def load_intermediate(name, directory=None):
@@ -80,38 +80,38 @@ def load_intermediate(name, directory=None):
         raise FileNotFoundError(f"文件不存在: {filepath}")
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
-    print(f"已加载: {filepath}")
+    print(f"Loaded: {filepath}")
     return data
 
 
 def load_windowed_data():
     """加载窗口级网络指标数据（用于训练/预测）"""
-    print("正在加载窗口级网络指标数据...")
+    print("Loading windowed network metrics data...")
     windowed_df = pd.read_csv(WINDOWED_METRICS_PATH)
-    print(f"✓ 窗口级网络指标: {len(windowed_df)} 行, {len(windowed_df.columns)} 列")
+    print(f"✓ Windowed network metrics: {len(windowed_df)} rows, {len(windowed_df.columns)} columns")
     return windowed_df
 
 
 def load_windowed_nodes():
     """加载窗口级节点数据（用于聚合特征）"""
-    print("正在加载窗口级节点数据...")
+    print("Loading windowed node data...")
     nodes_df = pd.read_csv(WINDOWED_NODES_PATH)
-    print(f"✓ 窗口级节点数据: {len(nodes_df)} 行, {len(nodes_df.columns)} 列")
+    print(f"✓ Windowed node data: {len(nodes_df)} rows, {len(nodes_df.columns)} columns")
     return nodes_df
 
 
 def check_data_quality(df, name="数据"):
     """检查数据质量"""
-    print(f"\n=== {name}质量检查 ===")
-    print(f"形状: {df.shape}")
-    print(f"缺失值:")
+    print(f"\n=== {name} Quality Check ===")
+    print(f"Shape: {df.shape}")
+    print(f"Missing values:")
     missing = df.isnull().sum()
     if missing.sum() > 0:
         print(missing[missing > 0])
     else:
-        print("无缺失值")
-    print(f"重复行: {df.duplicated().sum()}")
-    print(f"数据类型:\n{df.dtypes.value_counts()}")
+        print("No missing values")
+    print(f"Duplicate rows: {df.duplicated().sum()}")
+    print(f"Data types:\n{df.dtypes.value_counts()}")
 
 
 def normalize_features(train_df, val_df, test_df, train_val_df=None, 
@@ -190,64 +190,64 @@ def normalize_features(train_df, val_df, test_df, train_val_df=None,
 # ============================================================================
 
 print("\n" + "="*80)
-print("00 - 数据准备与划分")
+print("00 - Data Preparation and Splitting")
 print("="*80)
 
 # 1. 数据加载
 print("\n" + "-"*80)
-print("1. 数据加载")
+print("1. Data Loading")
 print("-"*80)
-print("\n**策略**：")
-print("- 加载windowed_output（窗口级动态特征）- 用于训练/预测")
-print("  - windowed_metrics: 网络级别指标（密度、聚类等）")
-print("  - windowed_nodes: 节点级别指标（中心性，将聚合为组级别）")
-print("- 加载task_metrics和session_output（静态特征）- 用于后处理分析，不合并到训练数据")
+print("\n**Strategy**:")
+print("- Load windowed_output (window-level dynamic features) - for training/prediction")
+print("  - windowed_metrics: Network-level metrics (density, clustering, etc.)")
+print("  - windowed_nodes: Node-level metrics (centrality, will be aggregated to group level)")
+print("- Load task_metrics and session_output (static features) - for post-processing analysis, not merged into training data")
 
 windowed_df = load_windowed_data()
 windowed_nodes_df = load_windowed_nodes()
 
 task_df = pd.read_csv(TASK_METRICS_PATH)
-print(f"✓ 任务性能指标: {len(task_df)} 行, {len(task_df.columns)} 列（仅用于后处理）")
+print(f"✓ Task performance metrics: {len(task_df)} rows, {len(task_df.columns)} columns (for post-processing only)")
 
 try:
     session_edges_df = pd.read_csv(PROJECT_ROOT / "session_output" / "data" / "session_edges.csv")
     session_nodes_df = pd.read_csv(PROJECT_ROOT / "session_output" / "data" / "session_nodes.csv")
     session_metrics_df = pd.read_csv(PROJECT_ROOT / "session_output" / "data" / "session_metrics.csv")
-    print(f"✓ 会话级数据已加载（仅用于后处理）")
+    print(f"✓ Session-level data loaded (for post-processing only)")
 except FileNotFoundError:
-    print("⚠ 会话级数据未找到，跳过（可选）")
+    print("⚠ Session-level data not found, skipping (optional)")
     session_edges_df = None
     session_nodes_df = None
     session_metrics_df = None
 
 # 2. 数据探索
 print("\n" + "-"*80)
-print("2. 数据探索")
+print("2. Data Exploration")
 print("-"*80)
 
-print("\n=== 窗口级网络指标数据（用于训练/预测）===")
-print(f"形状: {windowed_df.shape}")
-print(f"\n前10行:")
+print("\n=== Windowed Network Metrics Data (for training/prediction) ===")
+print(f"Shape: {windowed_df.shape}")
+print(f"\nFirst 10 rows:")
 print(windowed_df.head(10))
-print(f"\n列名: {list(windowed_df.columns)}")
-print(f"\n各组数据量:")
+print(f"\nColumn names: {list(windowed_df.columns)}")
+print(f"\nData count by group:")
 print(windowed_df['group'].value_counts().sort_index())
-print(f"\n模态类型:")
+print(f"\nModality types:")
 print(windowed_df['modality'].value_counts())
 
-check_data_quality(windowed_df, "窗口级网络指标")
+check_data_quality(windowed_df, "Windowed Network Metrics")
 
-print("\n=== 静态数据（仅用于后处理分析）===")
-print(f"任务性能指标: {task_df.shape}")
-print("注意：这些数据不合并到训练数据中，只用于后处理分析")
+print("\n=== Static Data (for post-processing analysis only) ===")
+print(f"Task performance metrics: {task_df.shape}")
+print("Note: These data are not merged into training data, only for post-processing analysis")
 
 # 3. 特征工程
 print("\n" + "-"*80)
-print("3. 特征工程")
+print("3. Feature Engineering")
 print("-"*80)
 
-print("\n3.1 展开窗口级网络指标的模态（宽格式）")
-print("正在展开窗口级网络指标的模态...")
+print("\n3.1 Expand Modalities of Windowed Network Metrics (Wide Format)")
+print("Expanding modalities of windowed network metrics...")
 
 metric_cols = ['density', 'avg_clustering', 'eigenvector', 'reciprocity']
 windowed_pivot_list = []
@@ -269,19 +269,19 @@ if windowed_pivot_list:
     # 统一窗口列名
     if 'window' in windowed_wide.columns:
         windowed_wide = windowed_wide.rename(columns={'window': 'window_idx'})
-    print(f"展开后形状: {windowed_wide.shape}")
-    print(f"特征数: {len(windowed_wide.columns) - 2}")
-    print(f"\n列名: {list(windowed_wide.columns)}")
-    print("\n前5行:")
+    print(f"Shape after expansion: {windowed_wide.shape}")
+    print(f"Number of features: {len(windowed_wide.columns) - 2}")
+    print(f"\nColumn names: {list(windowed_wide.columns)}")
+    print("\nFirst 5 rows:")
     print(windowed_wide.head())
 else:
-    print("警告: 没有找到可展开的指标")
+    print("Warning: No expandable metrics found")
     windowed_wide = windowed_df[['group', 'window']].drop_duplicates()
 if 'window' in windowed_wide.columns:
     windowed_wide = windowed_wide.rename(columns={'window': 'window_idx'})
 
-print("\n3.2 聚合窗口级节点指标（均值和标准差）")
-print("正在聚合节点级别的中心性指标...")
+print("\n3.2 Aggregate Windowed Node Metrics (Mean and Standard Deviation)")
+print("Aggregating node-level centrality metrics...")
 
 # 节点指标列（排除标识列）
 node_metric_cols = ['betweenness_centrality', 'degree_centrality', 
@@ -321,13 +321,13 @@ for metric in node_metric_cols:
 if node_agg_list:
     nodes_wide = pd.concat(node_agg_list, axis=1)
     nodes_wide = nodes_wide.reset_index()
-    print(f"节点指标聚合后形状: {nodes_wide.shape}")
-    print(f"节点特征数: {len(nodes_wide.columns) - 2}")
+    print(f"Shape after node metrics aggregation: {nodes_wide.shape}")
+    print(f"Number of node features: {len(nodes_wide.columns) - 2}")
 else:
-    print("警告: 没有找到可聚合的节点指标")
+    print("Warning: No aggregatable node metrics found")
     nodes_wide = windowed_wide[['group', 'window']].drop_duplicates()
 
-print("\n3.3 合并网络指标和节点指标")
+print("\n3.3 Merge Network Metrics and Node Metrics")
 # 确保nodes_wide的窗口列名与windowed_wide一致
 if 'window' in nodes_wide.columns:
     nodes_wide = nodes_wide.rename(columns={'window': 'window_idx'})
@@ -340,33 +340,33 @@ final_data = windowed_wide.merge(
     how='left'
 )
 
-print(f"合并后形状: {final_data.shape}")
-print(f"总特征数: {len(final_data.columns) - 2}")
+print(f"Shape after merging: {final_data.shape}")
+print(f"Total number of features: {len(final_data.columns) - 2}")
 
-print("\n3.4 统一窗口列名")
+print("\n3.4 Unify Window Column Names")
 if 'window' in final_data.columns:
     final_data = final_data.rename(columns={'window': 'window_idx'})
-    print("✓ 窗口列名已统一为window_idx")
+    print("✓ Window column name unified to window_idx")
 
 feature_cols = [col for col in final_data.columns if col not in ['group', 'window_idx']]
-print(f"\n最终数据形状: {final_data.shape}")
-print(f"总特征数: {len(feature_cols)}个")
+print(f"\nFinal data shape: {final_data.shape}")
+print(f"Total number of features: {len(feature_cols)}")
 network_features = [col for col in feature_cols if any(x in col for x in ['density', 'avg_clustering', 'eigenvector', 'reciprocity']) and '_mean_' not in col and '_std_' not in col]
 node_features = [col for col in feature_cols if '_mean_' in col or '_std_' in col]
-print(f"  - 网络级别特征: {len(network_features)}个（density, avg_clustering, eigenvector, reciprocity × 4种模态）")
-print(f"  - 节点级别特征: {len(node_features)}个（5个指标 × 2种聚合 × 4种模态）")
-print(f"特征示例（网络级别）: {network_features[:5]}")
-print(f"特征示例（节点级别）: {node_features[:5]}")
+print(f"  - Network-level features: {len(network_features)} (density, avg_clustering, eigenvector, reciprocity × 4 modalities)")
+print(f"  - Node-level features: {len(node_features)} (5 metrics × 2 aggregations × 4 modalities)")
+print(f"Feature examples (network-level): {network_features[:5]}")
+print(f"Feature examples (node-level): {node_features[:5]}")
 
-print("\n3.5 处理缺失值")
+print("\n3.5 Handle Missing Values")
 missing_stats = final_data.isnull().sum()
 missing_stats = missing_stats[missing_stats > 0].sort_values(ascending=False)
 if len(missing_stats) > 0:
-    print("缺失值统计:")
+    print("Missing value statistics:")
     print(missing_stats)
-    print(f"\n总缺失值比例: {final_data.isnull().sum().sum() / (final_data.shape[0] * final_data.shape[1]):.2%}")
+    print(f"\nTotal missing value ratio: {final_data.isnull().sum().sum() / (final_data.shape[0] * final_data.shape[1]):.2%}")
     
-    print("\n正在处理缺失值...")
+    print("\nProcessing missing values...")
     final_data = final_data.sort_values(['group', 'window_idx'])
     
     for col in final_data.columns:
@@ -375,29 +375,29 @@ if len(missing_stats) > 0:
                 lambda x: x.ffill().bfill().fillna(0)
             )
     
-    print("缺失值处理完成")
-    print(f"处理后缺失值: {final_data.isnull().sum().sum()}")
+    print("Missing value processing completed")
+    print(f"Missing values after processing: {final_data.isnull().sum().sum()}")
 else:
-    print("✓ 无缺失值")
+    print("✓ No missing values")
 
 # 4. 数据划分
 print("\n" + "-"*80)
-print("4. 数据划分")
+print("4. Data Splitting")
 print("-"*80)
 
-print("\n4.1 按组划分")
+print("\n4.1 Split by Group")
 train_raw = final_data[final_data['group'].isin(TRAIN_GROUPS)].copy()
 # 测试集划分
 test_raw = final_data[final_data['group'].isin(TEST_GROUPS)].copy()
 
-print(f"训练组: {TRAIN_GROUPS}")
-print(f"测试组: {TEST_GROUPS}")
-print(f"\n训练组数据量: {len(train_raw)} 窗口")
-print(f"测试组数据量: {len(test_raw)} 窗口")
+print(f"Training groups: {TRAIN_GROUPS}")
+print(f"Test groups: {TEST_GROUPS}")
+print(f"\nTraining group data size: {len(train_raw)} windows")
+print(f"Test group data size: {len(test_raw)} windows")
 
-print("\n4.2 使用训练组全部数据（不进行时间划分）")
-print("策略：直接使用训练组（组1-8）的全部数据作为训练集")
-print("原因：避免组内时间划分导致的数据泄露，充分利用训练数据")
+print("\n4.2 Use All Training Group Data (No Temporal Splitting)")
+print("Strategy: Directly use all data from training groups as training set")
+print("Reason: Avoid data leakage from temporal splitting within groups, fully utilize training data")
 
 # 直接使用训练组的全部数据
 train_data = train_raw.copy().sort_values(['group', 'window_idx']).reset_index(drop=True)
@@ -406,14 +406,12 @@ train_data = train_raw.copy().sort_values(['group', 'window_idx']).reset_index(d
 train_val_data = pd.DataFrame(columns=train_data.columns)
 val_data = pd.DataFrame(columns=train_data.columns)
 
-print(f"\n最终划分结果:")
-print(f"训练集: {len(train_data)} 窗口（组{TRAIN_GROUPS}的全部数据）")
-print(f"训练验证集: 0 窗口（已合并到训练集）")
-print(f"验证集: 0 窗口（已合并到测试集）")
-print(f"测试集: {len(test_raw)} 窗口（组{TEST_GROUPS}的全部数据，窗口数最多的4个组）")
+print(f"\nFinal splitting results:")
+print(f"Training set: {len(train_data)} windows (all data from groups {TRAIN_GROUPS})")
+print(f"Test set: {len(test_raw)} windows (all data from groups {TEST_GROUPS}, the 4 groups with most windows)")
 
-print("\n4.3 特征标准化")
-print("正在标准化特征...")
+print("\n4.3 Feature Standardization")
+print("Standardizing features...")
 
 exclude_cols = ['group', 'window_idx']
 # 创建空的val_data用于兼容性
@@ -427,15 +425,13 @@ train_scaled, val_scaled, test_scaled, scaler = normalize_features(
 )
 train_val_scaled = pd.DataFrame(columns=train_scaled.columns)
 
-print("标准化完成")
-print(f"训练集形状: {train_scaled.shape}（组{TRAIN_GROUPS}的全部数据）")
-print(f"训练验证集: 0 窗口（已合并到训练集）")
-print(f"验证集: 0 窗口（已合并到测试集）")
-print(f"测试集形状: {test_scaled.shape}（组{TEST_GROUPS}的全部数据，窗口数最多的4个组）")
+print("Standardization completed")
+print(f"Training set shape: {train_scaled.shape} (all data from groups {TRAIN_GROUPS})")
+print(f"Test set shape: {test_scaled.shape} (all data from groups {TEST_GROUPS}, the 4 groups with most windows)")
 
 # 5. 保存处理后的数据
 print("\n" + "-"*80)
-print("5. 保存处理后的数据")
+print("5. Save Processed Data")
 print("-"*80)
 
 save_intermediate('train_data', train_scaled)
@@ -454,29 +450,27 @@ if session_edges_df is not None:
     save_intermediate('session_nodes', session_nodes_df)
     save_intermediate('session_metrics', session_metrics_df)
 
-print(f"\n✓ 训练数据已保存到 {INTERMEDIATE_DIR}")
-print(f"✓ 特征数量: {len(feature_cols)}（只包含windowed_output的动态特征）")
-print(f"✓ 静态特征已单独保存（用于后处理分析）")
+print(f"\n✓ Training data saved to {INTERMEDIATE_DIR}")
+print(f"✓ Number of features: {len(feature_cols)} (only dynamic features from windowed_output)")
+print(f"✓ Static features saved separately (for post-processing analysis)")
 
 # 6. 数据划分报告
 print("\n" + "-"*80)
-print("6. 数据划分报告")
+print("6. Data Splitting Report")
 print("-"*80)
 
 report_lines = []
 report_lines.append("=" * 60)
-report_lines.append("数据划分报告")
+report_lines.append("Data Splitting Report")
 report_lines.append("=" * 60)
-report_lines.append(f"\n训练组: {TRAIN_GROUPS}")
-report_lines.append(f"测试组: {TEST_GROUPS}")
-report_lines.append(f"\n训练集: {len(train_scaled)} 窗口（组{TRAIN_GROUPS}的全部数据）")
-report_lines.append(f"训练验证集: 0 窗口（已合并到训练集，避免数据泄露）")
-report_lines.append(f"验证集: 0 窗口（已合并到测试集）")
-report_lines.append(f"测试集: {len(test_scaled)} 窗口（组{TEST_GROUPS}的全部数据，窗口数最多的4个组）")
-report_lines.append(f"\n总特征数: {len(feature_cols)}（只包含windowed_output的动态特征）")
-report_lines.append(f"\n各组窗口数统计:")
-report_lines.append(f"训练组: {train_scaled['group'].value_counts().sort_index().to_dict()}")
-report_lines.append(f"测试组: {test_scaled['group'].value_counts().sort_index().to_dict()}")
+report_lines.append(f"\nTraining groups: {TRAIN_GROUPS}")
+report_lines.append(f"Test groups: {TEST_GROUPS}")
+report_lines.append(f"\nTraining set: {len(train_scaled)} windows (all data from groups {TRAIN_GROUPS})")
+report_lines.append(f"Test set: {len(test_scaled)} windows (all data from groups {TEST_GROUPS}, the 4 groups with most windows)")
+report_lines.append(f"\nTotal number of features: {len(feature_cols)} (only dynamic features from windowed_output)")
+report_lines.append(f"\nWindow count statistics by group:")
+report_lines.append(f"Training groups: {train_scaled['group'].value_counts().sort_index().to_dict()}")
+report_lines.append(f"Test groups: {test_scaled['group'].value_counts().sort_index().to_dict()}")
 
 report_text = "\n".join(report_lines)
 print(report_text)
@@ -484,10 +478,10 @@ print(report_text)
 with open(REPORTS_DIR / "data_split_report.txt", 'w', encoding='utf-8') as f:
     f.write(report_text)
 
-print(f"\n✓ 报告已保存到 {REPORTS_DIR / 'data_split_report.txt'}")
+print(f"\n✓ Report saved to {REPORTS_DIR / 'data_split_report.txt'}")
 
 print("\n" + "="*80)
-print("数据准备完成！")
+print("Data preparation completed!")
 print("="*80)
-print("\n下一步：运行 `01_unsupervised_feature_selection.py` 进行无监督特征选择")
+print("\nNext step: Run `01_hmm_modeling.py` for HMM modeling")
 
