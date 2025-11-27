@@ -36,7 +36,7 @@ try:
     TF_AVAILABLE = True
 except ImportError:
     TF_AVAILABLE = False
-    print("错误: TensorFlow未安装，请运行: pip install tensorflow")
+    print("Error: TensorFlow not installed, please run: pip install tensorflow")
     exit(1)
 
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
@@ -64,7 +64,7 @@ SEQUENCE_CONFIG = {
 }
 
 # 多分类配置（需要与01_hmm_modeling.py中的HMM_N_CLASSES一致）
-N_CLASSES = 4  # 3或4分类，必须与HMM_N_CLASSES一致
+N_CLASSES = 2  # 2、3或4分类，必须与HMM_N_CLASSES一致（推荐2分类：需要干预 vs 不需要干预）
 
 # 模型配置
 LSTM_CONFIG = {
@@ -119,10 +119,10 @@ def load_intermediate(name, directory=None):
         directory = INTERMEDIATE_DIR
     filepath = directory / f"{name}.pkl"
     if not filepath.exists():
-        raise FileNotFoundError(f"文件不存在: {filepath}")
+        raise FileNotFoundError(f"File not found: {filepath}")
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
-    print(f"已加载: {filepath}")
+    print(f"Loaded: {filepath}")
     return data
 
 
@@ -133,7 +133,7 @@ def save_intermediate(name, data, directory=None):
     filepath = directory / f"{name}.pkl"
     with open(filepath, 'wb') as f:
         pickle.dump(data, f)
-    print(f"已保存: {filepath}")
+    print(f"Saved: {filepath}")
 
 
 def create_sequences_by_group(data_df, feature_cols, label_array, sequence_length=10):
@@ -298,7 +298,9 @@ def build_lstm_model(input_shape, config, n_classes=4):
         layers.Dense(n_classes, activation='softmax')  # 多分类输出
     ])
     
-    loss = 'sparse_categorical_crossentropy' if n_classes > 2 else 'binary_crossentropy'
+    # 对于2分类和多分类，都使用sparse_categorical_crossentropy
+    # 因为输出层是softmax，输出2个值，标签是整数（0或1），所以用sparse版本
+    loss = 'sparse_categorical_crossentropy'
     
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=config['learning_rate']),
@@ -320,7 +322,9 @@ def build_gru_model(input_shape, config, n_classes=4):
         layers.Dense(n_classes, activation='softmax')  # 多分类输出
     ])
     
-    loss = 'sparse_categorical_crossentropy' if n_classes > 2 else 'binary_crossentropy'
+    # 对于2分类和多分类，都使用sparse_categorical_crossentropy
+    # 因为输出层是softmax，输出2个值，标签是整数（0或1），所以用sparse版本
+    loss = 'sparse_categorical_crossentropy'
     
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=config['learning_rate']),
@@ -357,7 +361,9 @@ def build_transformer_model(input_shape, config, n_classes=4):
     outputs = layers.Dense(n_classes, activation='softmax')(x)  # 多分类输出
     
     model = models.Model(inputs, outputs)
-    loss = 'sparse_categorical_crossentropy' if n_classes > 2 else 'binary_crossentropy'
+    # 对于2分类和多分类，都使用sparse_categorical_crossentropy
+    # 因为输出层是softmax，输出2个值，标签是整数（0或1），所以用sparse版本
+    loss = 'sparse_categorical_crossentropy'
     
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=config['learning_rate']),
@@ -373,12 +379,12 @@ def build_transformer_model(input_shape, config, n_classes=4):
 # ============================================================================
 
 print("\n" + "="*80)
-print("03 - 时间序列模型训练")
+print("03 - Time Series Model Training")
 print("="*80)
 
 # 1. 加载数据
 print("\n" + "-"*80)
-print("1. 加载数据和选定特征")
+print("1. Load Data and Selected Features")
 print("-"*80)
 
 train_data = load_intermediate('train_data')
@@ -393,12 +399,12 @@ y_test = load_intermediate('y_test')
 
 top_m_features = load_intermediate('top_m_features')
 
-print(f"\n选定特征数: {len(top_m_features)}")
-print(f"序列长度: {SEQUENCE_CONFIG['sequence_length']}")
+print(f"\nNumber of selected features: {len(top_m_features)}")
+print(f"Sequence length: {SEQUENCE_CONFIG['sequence_length']}")
 
 # 2. 创建时间序列序列
 print("\n" + "-"*80)
-print("2. 创建时间序列序列")
+print("2. Create Time Series Sequences")
 print("-"*80)
 
 # 合并训练集和训练验证集用于训练
@@ -410,7 +416,7 @@ else:
     train_full_data = train_data
     y_train_full = y_train
     if len(train_val_data) == 0:
-        print("注意: train_val_data 为空，仅使用训练集数据")
+        print("Note: train_val_data is empty, using only training set data")
 
 X_train_seq, y_train_seq = create_sequences_by_group(
     train_full_data, top_m_features, y_train_full, 
@@ -425,8 +431,8 @@ if len(val_data) > 0 and len(y_val) > 0:
     )
 else:
     # 如果验证集为空，从训练集中划分20%作为验证集（用于早停和模型选择）
-    print("注意: 从训练集中划分20%作为验证集（用于早停和模型选择）")
-    print("使用时间顺序划分（保持时间序列的时间依赖性）")
+    print("Note: Splitting 20% from training set as validation set (for early stopping and model selection)")
+    print("Using temporal order split (preserving temporal dependencies of time series)")
     
     # 时间序列数据：使用简单的前80%后20%划分，保持时间顺序
     # 注意：这可能导致验证集类别不平衡，但这是时间序列数据的标准做法
@@ -439,56 +445,56 @@ else:
     # 打印验证集标签分布（用于调试）
     unique_labels, counts = np.unique(y_val_seq, return_counts=True)
     label_dist = dict(zip(unique_labels, counts))
-    print(f"验证集标签分布: {label_dist}")
+    print(f"Validation set label distribution: {label_dist}")
     if len(unique_labels) < N_CLASSES:
-        print(f"  ⚠️  警告: 验证集中只有{len(unique_labels)}个类别，但期望{N_CLASSES}个类别")
-        print(f"  这是时间序列数据划分的常见问题：后面的时间窗口可能只包含某些类别")
-        print(f"  评估指标（如F1、Precision、Recall）可能不准确，但准确率仍然有效")
+        print(f"  ⚠️  Warning: Validation set only has {len(unique_labels)} classes, but expects {N_CLASSES} classes")
+        print(f"  This is a common issue with time series data splitting: later time windows may only contain certain classes")
+        print(f"  Evaluation metrics (e.g., F1, Precision, Recall) may be inaccurate, but accuracy is still valid")
 
 X_test_seq, y_test_seq = create_sequences_by_group(
     test_data, top_m_features, y_test,
     sequence_length=SEQUENCE_CONFIG['sequence_length']
 )
 
-print(f"\n序列数据形状:")
+print(f"\nSequence data shapes:")
 print(f"X_train_seq: {X_train_seq.shape}, y_train_seq: {y_train_seq.shape}")
 print(f"X_val_seq: {X_val_seq.shape}, y_val_seq: {y_val_seq.shape}")
 print(f"X_test_seq: {X_test_seq.shape}, y_test_seq: {y_test_seq.shape}")
 
 # 检查标签分布
-print(f"\n训练集标签分布:")
+print(f"\nTraining set label distribution:")
 unique_train, counts_train = np.unique(y_train_seq, return_counts=True)
-print(f"  标签: {dict(zip(unique_train, counts_train))}")
-print(f"  标签范围: [{np.min(y_train_seq)}, {np.max(y_train_seq)}]")
-print(f"  期望类别数: {N_CLASSES}")
+print(f"  Labels: {dict(zip(unique_train, counts_train))}")
+print(f"  Label range: [{np.min(y_train_seq)}, {np.max(y_train_seq)}]")
+print(f"  Expected number of classes: {N_CLASSES}")
 
-print(f"\n验证集标签分布:")
+print(f"\nValidation set label distribution:")
 unique_val, counts_val = np.unique(y_val_seq, return_counts=True)
-print(f"  标签: {dict(zip(unique_val, counts_val))}")
-print(f"  标签范围: [{np.min(y_val_seq)}, {np.max(y_val_seq)}]")
-print(f"  期望类别数: {N_CLASSES}")
+print(f"  Labels: {dict(zip(unique_val, counts_val))}")
+print(f"  Label range: [{np.min(y_val_seq)}, {np.max(y_val_seq)}]")
+print(f"  Expected number of classes: {N_CLASSES}")
 
 # 检查数据是否有NaN或Inf
 if np.any(np.isnan(X_train_seq)) or np.any(np.isinf(X_train_seq)):
-    print(f"  ⚠️  警告: 训练序列数据包含NaN或Inf值！")
+    print(f"  ⚠️  Warning: Training sequence data contains NaN or Inf values!")
 if np.any(np.isnan(X_val_seq)) or np.any(np.isinf(X_val_seq)):
-    print(f"  ⚠️  警告: 验证序列数据包含NaN或Inf值！")
+    print(f"  ⚠️  Warning: Validation sequence data contains NaN or Inf values!")
 
 input_shape = (SEQUENCE_CONFIG['sequence_length'], len(top_m_features))
-print(f"\n输入形状: {input_shape}")
+print(f"\nInput shape: {input_shape}")
 
 # 3. 训练模型
 print("\n" + "-"*80)
-print("3. 训练模型")
+print("3. Train Models")
 print("-"*80)
 
 models_trained = {}
 histories = {}
 
 # 3.1 LSTM
-print("\n3.1 训练LSTM模型...")
+print("\n3.1 Training LSTM model...")
 lstm_model = build_lstm_model(input_shape, LSTM_CONFIG, n_classes=N_CLASSES)
-print("LSTM模型结构:")
+print("LSTM model structure:")
 lstm_model.summary()
 
 callbacks_list = [
@@ -524,7 +530,7 @@ models_trained['LSTM'] = lstm_model
 histories['LSTM'] = history_lstm.history
 
 # 3.2 GRU
-print("\n3.2 训练GRU模型...")
+print("\n3.2 Training GRU model...")
 gru_model = build_gru_model(input_shape, GRU_CONFIG, n_classes=N_CLASSES)
 
 callbacks_list = [
@@ -560,7 +566,7 @@ models_trained['GRU'] = gru_model
 histories['GRU'] = history_gru.history
 
 # 3.3 Transformer
-print("\n3.3 训练Transformer模型...")
+print("\n3.3 Training Transformer model...")
 transformer_model = build_transformer_model(input_shape, TRANSFORMER_CONFIG, n_classes=N_CLASSES)
 
 callbacks_list = [
@@ -597,62 +603,64 @@ histories['Transformer'] = history_transformer.history
 
 # 4. 评估模型并选择最佳模型
 print("\n" + "-"*80)
-print("4. 评估模型并选择最佳模型")
+print("4. Evaluate Models and Select Best Model")
 print("-"*80)
 
 model_scores = {}
 
 for model_name, model in models_trained.items():
     print(f"\n{'='*60}")
-    print(f"评估 {model_name} 模型")
+    print(f"Evaluating {model_name} model")
     print(f"{'='*60}")
     
     # 预测
     y_pred_proba = model.predict(X_val_seq, verbose=0)
-    if N_CLASSES > 2:
-        y_pred = np.argmax(y_pred_proba, axis=1)  # 多分类：取概率最大的类别
-        y_proba = y_pred_proba  # 完整概率矩阵用于多分类AUC
+    # 对于2分类和多分类，都使用argmax（因为输出层是softmax，输出n_classes个概率值）
+    y_pred = np.argmax(y_pred_proba, axis=1)  # 取概率最大的类别
+    if N_CLASSES == 2:
+        # 2分类：y_pred_proba形状是(N, 2)，y_proba取第二列（类别1的概率）用于AUC计算
+        y_proba = y_pred_proba[:, 1] if y_pred_proba.shape[1] > 1 else y_pred_proba.flatten()
     else:
-        y_pred = (y_pred_proba > 0.5).astype(int).flatten()
-        y_proba = y_pred_proba.flatten()
+        # 多分类：使用完整概率矩阵
+        y_proba = y_pred_proba
     
     # 详细调试信息
-    print(f"\n验证集基本信息:")
-    print(f"  验证集样本数: {len(y_val_seq)}")
-    print(f"  真实标签范围: [{np.min(y_val_seq)}, {np.max(y_val_seq)}]")
-    print(f"  预测标签范围: [{np.min(y_pred)}, {np.max(y_pred)}]")
-    print(f"  预测概率形状: {y_pred_proba.shape}")
-    print(f"  预测概率范围: [{np.min(y_pred_proba):.4f}, {np.max(y_pred_proba):.4f}]")
+    print(f"\nValidation set basic information:")
+    print(f"  Validation set sample count: {len(y_val_seq)}")
+    print(f"  True label range: [{np.min(y_val_seq)}, {np.max(y_val_seq)}]")
+    print(f"  Predicted label range: [{np.min(y_pred)}, {np.max(y_pred)}]")
+    print(f"  Prediction probability shape: {y_pred_proba.shape}")
+    print(f"  Prediction probability range: [{np.min(y_pred_proba):.4f}, {np.max(y_pred_proba):.4f}]")
     
     # 标签分布
     unique_true, counts_true = np.unique(y_val_seq, return_counts=True)
     unique_pred, counts_pred = np.unique(y_pred, return_counts=True)
-    print(f"\n标签分布:")
-    print(f"  真实标签: {dict(zip(unique_true, counts_true))}")
-    print(f"  预测标签: {dict(zip(unique_pred, counts_pred))}")
+    print(f"\nLabel distribution:")
+    print(f"  True labels: {dict(zip(unique_true, counts_true))}")
+    print(f"  Predicted labels: {dict(zip(unique_pred, counts_pred))}")
     
     # 检查预测是否正确
     correct = np.sum(y_val_seq == y_pred)
-    print(f"\n预测正确性:")
-    print(f"  正确预测数: {correct}/{len(y_val_seq)}")
-    print(f"  准确率: {correct/len(y_val_seq):.4f}")
+    print(f"\nPrediction correctness:")
+    print(f"  Correct predictions: {correct}/{len(y_val_seq)}")
+    print(f"  Accuracy: {correct/len(y_val_seq):.4f}")
     
     # 如果准确率为0，打印一些样本的详细信息
     if correct == 0:
-        print(f"\n⚠️  警告: 所有预测都错误！前5个样本的详细信息:")
+        print(f"\n⚠️  Warning: All predictions are wrong! Details of first 5 samples:")
         for i in range(min(5, len(y_val_seq))):
-            print(f"    样本{i}: 真实={y_val_seq[i]}, 预测={y_pred[i]}, 概率={y_pred_proba[i]}")
+            print(f"    Sample {i}: True={y_val_seq[i]}, Predicted={y_pred[i]}, Probability={y_pred_proba[i]}")
     
     metrics = evaluate_model(y_val_seq, y_pred, y_proba, n_classes=N_CLASSES)
     model_scores[model_name] = metrics
     
-    print(f"\n{model_name} - 验证集性能（从训练集划分，用于模型选择）:")
+    print(f"\n{model_name} - Validation set performance (split from training set, for model selection):")
     # 统一处理所有指标，避免重复打印
-    f1_str = f"{metrics['f1_score']:.4f}" if not np.isnan(metrics['f1_score']) else "nan (无法计算)"
-    acc_str = f"{metrics['accuracy']:.4f}" if not np.isnan(metrics['accuracy']) else "nan (无法计算)"
-    prec_str = f"{metrics['precision']:.4f}" if not np.isnan(metrics['precision']) else "nan (无法计算)"
-    rec_str = f"{metrics['recall']:.4f}" if not np.isnan(metrics['recall']) else "nan (无法计算)"
-    auc_str = f"{metrics['auc_roc']:.4f}" if not np.isnan(metrics['auc_roc']) else "nan (无法计算)"
+    f1_str = f"{metrics['f1_score']:.4f}" if not np.isnan(metrics['f1_score']) else "nan (cannot calculate)"
+    acc_str = f"{metrics['accuracy']:.4f}" if not np.isnan(metrics['accuracy']) else "nan (cannot calculate)"
+    prec_str = f"{metrics['precision']:.4f}" if not np.isnan(metrics['precision']) else "nan (cannot calculate)"
+    rec_str = f"{metrics['recall']:.4f}" if not np.isnan(metrics['recall']) else "nan (cannot calculate)"
+    auc_str = f"{metrics['auc_roc']:.4f}" if not np.isnan(metrics['auc_roc']) else "nan (cannot calculate)"
     
     print(f"  F1 Score: {f1_str}")
     print(f"  Accuracy: {acc_str}")
@@ -661,10 +669,10 @@ for model_name, model in models_trained.items():
     print(f"  AUC-ROC: {auc_str}")
     
     if metrics['accuracy'] == 0.0:
-        print(f"  ⚠️  严重警告: 模型准确率为0，所有预测都错误！")
-        print(f"     可能原因: 1) 模型训练失败 2) 数据预处理问题 3) 标签不匹配")
+        print(f"  ⚠️  Critical Warning: Model accuracy is 0, all predictions are wrong!")
+        print(f"     Possible reasons: 1) Model training failed 2) Data preprocessing issue 3) Label mismatch")
     elif np.isnan(metrics['f1_score']) or np.isnan(metrics['precision']) or np.isnan(metrics['recall']):
-        print(f"  ⚠️  警告: 部分指标无法计算（可能因为验证集中类别不足或预测失败）")
+        print(f"  ⚠️  Warning: Some metrics cannot be calculated (possibly due to insufficient classes in validation set or prediction failure)")
 
 # 选择F1分数最高的模型（处理nan情况）
 def get_f1_score(metrics):
@@ -677,21 +685,21 @@ best_model = models_trained[best_model_name]
 
 best_f1 = model_scores[best_model_name]['f1_score']
 if np.isnan(best_f1):
-    print(f"\n⚠️  警告: 所有模型的F1分数都是nan，选择第一个模型作为最佳模型")
+    print(f"\n⚠️  Warning: All models have nan F1 scores, selecting first model as best model")
     best_model_name = list(model_scores.keys())[0]
     best_model = models_trained[best_model_name]
-    print(f"最佳模型: {best_model_name} (F1: nan)")
+    print(f"Best model: {best_model_name} (F1: nan)")
 else:
-    print(f"\n最佳模型: {best_model_name} (F1: {best_f1:.4f})")
+    print(f"\nBest model: {best_model_name} (F1: {best_f1:.4f})")
 
 # 5. 保存模型
 print("\n" + "-"*80)
-print("5. 保存模型")
+print("5. Save Models")
 print("-"*80)
 
 # 保存最佳模型
 best_model.save(str(MODELS_DIR / f'{best_model_name.lower()}_final.h5'))
-print(f"✓ 最佳模型已保存: {best_model_name.lower()}_final.h5")
+print(f"✓ Best model saved: {best_model_name.lower()}_final.h5")
 
 # 保存所有模型的历史
 save_intermediate('history_lstm', histories['LSTM'])
@@ -704,32 +712,32 @@ save_intermediate('best_model_name', best_model_name)
 
 # 6. 生成报告
 print("\n" + "-"*80)
-print("6. 生成训练报告")
+print("6. Generate Training Report")
 print("-"*80)
 
 report_lines = []
 report_lines.append("=" * 60)
-report_lines.append("时间序列模型训练报告")
+report_lines.append("Time Series Model Training Report")
 report_lines.append("=" * 60)
-report_lines.append(f"\n配置:")
-report_lines.append(f"  序列长度: {SEQUENCE_CONFIG['sequence_length']}")
-report_lines.append(f"  特征数: {len(top_m_features)}")
-report_lines.append(f"\n模型性能（验证集：从训练集划分20%，用于模型选择）:")
+report_lines.append(f"\nConfiguration:")
+report_lines.append(f"  Sequence length: {SEQUENCE_CONFIG['sequence_length']}")
+report_lines.append(f"  Number of features: {len(top_m_features)}")
+report_lines.append(f"\nModel Performance (Validation set: 20% split from training set, for model selection):")
 for model_name, metrics in model_scores.items():
     report_lines.append(f"\n{model_name}:")
     # 统一处理所有指标，避免重复打印
-    f1_str = f"{metrics['f1_score']:.4f}" if not np.isnan(metrics['f1_score']) else "nan (无法计算)"
-    acc_str = f"{metrics['accuracy']:.4f}" if not np.isnan(metrics['accuracy']) else "nan (无法计算)"
-    prec_str = f"{metrics['precision']:.4f}" if not np.isnan(metrics['precision']) else "nan (无法计算)"
-    rec_str = f"{metrics['recall']:.4f}" if not np.isnan(metrics['recall']) else "nan (无法计算)"
-    auc_str = f"{metrics['auc_roc']:.4f}" if not np.isnan(metrics['auc_roc']) else "nan (无法计算)"
+    f1_str = f"{metrics['f1_score']:.4f}" if not np.isnan(metrics['f1_score']) else "nan (cannot calculate)"
+    acc_str = f"{metrics['accuracy']:.4f}" if not np.isnan(metrics['accuracy']) else "nan (cannot calculate)"
+    prec_str = f"{metrics['precision']:.4f}" if not np.isnan(metrics['precision']) else "nan (cannot calculate)"
+    rec_str = f"{metrics['recall']:.4f}" if not np.isnan(metrics['recall']) else "nan (cannot calculate)"
+    auc_str = f"{metrics['auc_roc']:.4f}" if not np.isnan(metrics['auc_roc']) else "nan (cannot calculate)"
     
     report_lines.append(f"  F1 Score: {f1_str}")
     report_lines.append(f"  Accuracy: {acc_str}")
     report_lines.append(f"  Precision: {prec_str}")
     report_lines.append(f"  Recall: {rec_str}")
     report_lines.append(f"  AUC-ROC: {auc_str}")
-report_lines.append(f"\n最佳模型: {best_model_name}")
+report_lines.append(f"\nBest model: {best_model_name}")
 
 report_text = "\n".join(report_lines)
 print(report_text)
@@ -737,10 +745,10 @@ print(report_text)
 with open(REPORTS_DIR / "training_report.txt", 'w', encoding='utf-8') as f:
     f.write(report_text)
 
-print(f"\n✓ 报告已保存到 {REPORTS_DIR / 'training_report.txt'}")
+print(f"\n✓ Report saved to {REPORTS_DIR / 'training_report.txt'}")
 
 print("\n" + "="*80)
-print("时间序列模型训练完成！")
+print("Time series model training completed!")
 print("="*80)
-print("\n下一步：运行 `04_evaluation_and_reporting.py` 进行最终评估")
+print("\nNext step: Run `04_evaluation_and_reporting.py` for final evaluation")
 

@@ -77,10 +77,10 @@ def load_intermediate(name, directory=None):
         directory = INTERMEDIATE_DIR
     filepath = directory / f"{name}.pkl"
     if not filepath.exists():
-        raise FileNotFoundError(f"文件不存在: {filepath}")
+        raise FileNotFoundError(f"File not found: {filepath}")
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
-    print(f"已加载: {filepath}")
+    print(f"Loaded: {filepath}")
     return data
 
 
@@ -91,7 +91,7 @@ def save_intermediate(name, data, directory=None):
     filepath = directory / f"{name}.pkl"
     with open(filepath, 'wb') as f:
         pickle.dump(data, f)
-    print(f"已保存: {filepath}")
+    print(f"Saved: {filepath}")
 
 
 def evaluate_model(y_true, y_pred, y_proba=None, n_classes=2):
@@ -143,12 +143,12 @@ def evaluate_model(y_true, y_pred, y_proba=None, n_classes=2):
 # ============================================================================
 
 print("\n" + "="*80)
-print("02 - 有监督特征选择")
+print("02 - Supervised Feature Selection")
 print("="*80)
 
 # 1. 加载数据
 print("\n" + "-"*80)
-print("1. 加载数据和标签")
+print("1. Load Data and Labels")
 print("-"*80)
 
 train_data = load_intermediate('train_data')
@@ -162,10 +162,10 @@ y_train_val = load_intermediate('y_train_val')
 y_val = load_intermediate('y_val')
 y_test = load_intermediate('y_test')
 
-print(f"\n数据形状:")
-print(f"训练集: {train_data.shape}, 标签: {y_train.shape}")
-print(f"测试集: {test_data.shape}, 标签: {y_test.shape}")
-print(f"特征数: {len(feature_names)}")
+print(f"\nData shapes:")
+print(f"Training set: {train_data.shape}, Labels: {y_train.shape}")
+print(f"Test set: {test_data.shape}, Labels: {y_test.shape}")
+print(f"Number of features: {len(feature_names)}")
 
 # 提取特征列
 exclude_cols = ['group', 'window_idx']
@@ -193,17 +193,17 @@ else:
     X_train_full = X_train
     y_train_full = y_train
 
-print(f"\n用于特征选择的数据:")
+print(f"\nData for feature selection:")
 print(f"X_train_full: {X_train_full.shape}, y_train_full: {y_train_full.shape}")
 
 # 检测分类数量（从标签中推断）
 if N_CLASSES is None:
     N_CLASSES = len(np.unique(y_train_full))
-    print(f"\n检测到分类数量: {N_CLASSES}")
+    print(f"\nDetected number of classes: {N_CLASSES}")
 
 # 2. 多种方法评估特征重要性
 print("\n" + "-"*80)
-print("2. 评估特征重要性")
+print("2. Evaluate Feature Importance")
 print("-"*80)
 
 feature_scores = pd.DataFrame({
@@ -211,7 +211,7 @@ feature_scores = pd.DataFrame({
 })
 
 # 2.1 Random Forest特征重要性
-print("\n2.1 Random Forest特征重要性...")
+print("\n2.1 Random Forest Feature Importance...")
 rf = RandomForestClassifier(
     n_estimators=SUPERVISED_CONFIG['rf_n_estimators'],
     max_depth=SUPERVISED_CONFIG['rf_max_depth'],
@@ -228,7 +228,7 @@ mi_scores = mutual_info_classif(X_train_full, y_train_full, random_state=RANDOM_
 feature_scores['mutual_info'] = mi_scores
 
 # 2.3 LASSO系数
-print("2.3 LASSO系数...")
+print("2.3 LASSO Coefficients...")
 lasso = LassoCV(alphas=[0.001, 0.01, 0.1, 1.0], cv=5, random_state=RANDOM_STATE, max_iter=1000)
 lasso.fit(X_train_full, y_train_full)
 feature_scores['lasso_coef'] = np.abs(lasso.coef_)
@@ -254,7 +254,7 @@ feature_scores['rfe_selected'] = rfe.support_.astype(int)
 
 # 3. 综合评分
 print("\n" + "-"*80)
-print("3. 综合评分")
+print("3. Combined Scoring")
 print("-"*80)
 
 # 归一化各项得分到0-1范围
@@ -274,33 +274,33 @@ feature_scores['combined_score'] = (
 # 按综合得分排序
 feature_scores = feature_scores.sort_values('combined_score', ascending=False)
 
-print("\n特征重要性排序（Top 10）:")
+print("\nFeature importance ranking (Top 10):")
 print(feature_scores[['feature', 'combined_score', 'rf_norm', 'mi_norm', 'lasso_norm', 'rfe_norm']].head(10).to_string(index=False))
 
 # 4. 选择Top-M特征
 print("\n" + "-"*80)
-print(f"4. 选择Top-{SUPERVISED_CONFIG['top_m']}特征")
+print(f"4. Select Top-{SUPERVISED_CONFIG['top_m']} Features")
 print("-"*80)
 
 top_m_features = feature_scores.head(SUPERVISED_CONFIG['top_m'])['feature'].tolist()
-print(f"\n选定的特征 ({len(top_m_features)}个):")
+print(f"\nSelected features ({len(top_m_features)}):")
 for i, feat in enumerate(top_m_features, 1):
     print(f"  {i}. {feat}")
 
 # 5. 特征选择总结
 print("\n" + "-"*80)
-print("5. 特征选择总结")
+print("5. Feature Selection Summary")
 print("-"*80)
 
-print(f"\n特征选择完成:")
-print(f"  - 从 {len(feature_cols)} 个特征中选择了 {len(top_m_features)} 个最重要的特征")
-print(f"  - 选择比例: {len(top_m_features)/len(feature_cols):.1%}")
-print(f"\n注意: 特征选择的性能评估将在后续的时间序列模型训练中进行")
-print(f"      （在训练集上评估会导致过拟合，结果无意义）")
+print(f"\nFeature selection completed:")
+print(f"  - Selected {len(top_m_features)} most important features from {len(feature_cols)} features")
+print(f"  - Selection ratio: {len(top_m_features)/len(feature_cols):.1%}")
+print(f"\nNote: Feature selection performance evaluation will be conducted in subsequent time series model training")
+print(f"      (Evaluating on training set would cause overfitting, results are meaningless)")
 
 # 6. 保存结果
 print("\n" + "-"*80)
-print("6. 保存结果")
+print("6. Save Results")
 print("-"*80)
 
 save_intermediate('top_m_features', top_m_features)
@@ -309,24 +309,24 @@ save_intermediate('supervised_feature_scores', feature_scores[['feature', 'combi
 
 # 7. 生成报告
 print("\n" + "-"*80)
-print("7. 生成特征选择报告")
+print("7. Generate Feature Selection Report")
 print("-"*80)
 
 report_lines = []
 report_lines.append("=" * 60)
-report_lines.append("有监督特征选择报告")
+report_lines.append("Supervised Feature Selection Report")
 report_lines.append("=" * 60)
-report_lines.append(f"\n配置:")
-report_lines.append(f"  选择特征数: {SUPERVISED_CONFIG['top_m']}")
-report_lines.append(f"  总特征数: {len(feature_cols)}")
-report_lines.append(f"\n选定的特征:")
+report_lines.append(f"\nConfiguration:")
+report_lines.append(f"  Number of selected features: {SUPERVISED_CONFIG['top_m']}")
+report_lines.append(f"  Total number of features: {len(feature_cols)}")
+report_lines.append(f"\nSelected features:")
 for i, feat in enumerate(top_m_features, 1):
     score = feature_scores[feature_scores['feature'] == feat]['combined_score'].values[0]
-    report_lines.append(f"  {i}. {feat} (得分: {score:.4f})")
-report_lines.append(f"\n说明:")
-report_lines.append(f"  - 特征选择基于4种方法的综合评分（RF重要性、互信息、LASSO、RFE）")
-report_lines.append(f"  - 性能评估将在后续时间序列模型训练中进行")
-report_lines.append(f"  - 在训练集上评估会导致过拟合，结果无意义")
+    report_lines.append(f"  {i}. {feat} (score: {score:.4f})")
+report_lines.append(f"\nNotes:")
+report_lines.append(f"  - Feature selection based on combined scores from 4 methods (RF importance, Mutual Information, LASSO, RFE)")
+report_lines.append(f"  - Performance evaluation will be conducted in subsequent time series model training")
+report_lines.append(f"  - Evaluating on training set would cause overfitting, results are meaningless")
 
 report_text = "\n".join(report_lines)
 print(report_text)
@@ -334,10 +334,10 @@ print(report_text)
 with open(REPORTS_DIR / "feature_selection_supervised_report.txt", 'w', encoding='utf-8') as f:
     f.write(report_text)
 
-print(f"\n✓ 报告已保存到 {REPORTS_DIR / 'feature_selection_supervised_report.txt'}")
+print(f"\n✓ Report saved to {REPORTS_DIR / 'feature_selection_supervised_report.txt'}")
 
 print("\n" + "="*80)
-print("有监督特征选择完成！")
+print("Supervised feature selection completed!")
 print("="*80)
-print("\n下一步：运行 `03_time_series_training.py` 进行时间序列模型训练")
+print("\nNext step: Run `03_time_series_training.py` for time series model training")
 
