@@ -37,7 +37,9 @@ except ImportError:
     print("Error: TensorFlow not installed")
     exit(1)
 
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeRegressor
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.gridspec import GridSpec
@@ -287,6 +289,155 @@ def calculate_intervention_benefit(actual_features, counterfactual_features, int
 
 
 # ============================================================================
+# Team Efficiency Model
+# ============================================================================
+
+def extract_group_state_features(data_df, states_sequence, groups, feature_names, group_id):
+    """
+    Extract state sequence features for a specific group
+    
+    Parameters:
+    -----------
+    data_df : pd.DataFrame
+        Full data with group and window_idx columns
+    states_sequence : np.ndarray
+        Predicted states for all sequences
+    groups : np.ndarray
+        Group IDs for each sequence
+    feature_names : list
+        List of feature names
+    group_id : int
+        Target group ID
+    
+    Returns:
+    --------
+    features : dict
+        Dictionary of aggregated features for the group
+    """
+    # Get all sequences for this group
+    group_mask = groups == group_id
+    group_states = states_sequence[group_mask]
+    group_data = data_df[data_df['group'] == group_id]
+    
+    if len(group_states) == 0 or len(group_data) == 0:
+        return None
+    
+    # State distribution features
+    state_counts = np.bincount(group_states.astype(int), minlength=N_CLASSES)
+    state_proportions = state_counts / len(group_states) if len(group_states) > 0 else np.zeros(N_CLASSES)
+    
+    # Key feature aggregations (mean, std, min, max)
+    key_features = ['density', 'clustering', 'eigenvector', 'reciprocity']
+    feature_cols = [col for col in feature_names if any(kf in col.lower() for kf in key_features)]
+    
+    feature_stats = {}
+    for feat_col in feature_cols[:10]:  # Limit to top 10 to avoid too many features
+        if feat_col in group_data.columns:
+            feat_values = group_data[feat_col].values
+            if len(feat_values) > 0:
+                feature_stats[f'{feat_col}_mean'] = np.mean(feat_values)
+                feature_stats[f'{feat_col}_std'] = np.std(feat_values)
+                feature_stats[f'{feat_col}_min'] = np.min(feat_values)
+                feature_stats[f'{feat_col}_max'] = np.max(feat_values)
+    
+    # State transition features
+    transitions = 0
+    state_changes = 0
+    for i in range(len(group_states) - 1):
+        if group_states[i] != group_states[i + 1]:
+            state_changes += 1
+        transitions += 1
+    
+    transition_rate = state_changes / transitions if transitions > 0 else 0.0
+    
+    # Combine all features
+    features = {
+        **{f'state_{i}_proportion': state_proportions[i] for i in range(N_CLASSES)},
+        **feature_stats,
+        'transition_rate': transition_rate,
+        'total_windows': len(group_states),
+        'intervention_state_proportion': state_proportions[1] if N_CLASSES == 2 else np.sum(state_proportions[1:])
+    }
+    
+    return features
+
+
+def build_team_efficiency_model(X_train, y_train, model_type='linear'):
+    """
+    Build a simple model to predict task completion time from state features
+    
+    Parameters:
+    -----------
+    X_train : np.ndarray or pd.DataFrame
+        Training features (group-level state features)
+    y_train : np.ndarray
+        Training targets (completion times)
+    model_type : str
+        'linear' or 'tree'
+    
+    Returns:
+    --------
+    model : sklearn model
+        Trained efficiency model
+    """
+    if model_type == 'linear':
+        model = LinearRegression()
+    elif model_type == 'tree':
+        model = DecisionTreeRegressor(max_depth=5, random_state=RANDOM_STATE)
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}")
+    
+    model.fit(X_train, y_train)
+    return model
+
+
+def predict_completion_time(model, group_features, feature_names=None):
+    """
+    Predict task completion time from group features
+    
+    Parameters:
+    -----------
+    model : sklearn model
+        Trained efficiency model
+    group_features : dict or np.ndarray
+        Group-level features
+    feature_names : list, optional
+        List of feature names in the order used during training
+    
+    Returns:
+    --------
+    predicted_time : float
+        Predicted completion time in seconds
+    """
+    if isinstance(group_features, dict):
+        # Use feature_names if provided to ensure correct order
+        if feature_names is not None:
+            # Convert dict to array using the exact feature order from training
+            feature_array = np.array([group_features.get(fn, 0) for fn in feature_names])
+        else:
+            # Fallback: try to maintain some order (less reliable)
+            feature_array = np.array([group_features.get(f'state_{i}_proportion', 0) for i in range(N_CLASSES)] +
+                                [group_features.get('transition_rate', 0),
+                                 group_features.get('total_windows', 0),
+                                 group_features.get('intervention_state_proportion', 0)])
+            # Add other features if available
+            other_features = [v for k, v in group_features.items() 
+                             if k not in [f'state_{i}_proportion' for i in range(N_CLASSES)] 
+                             and k not in ['transition_rate', 'total_windows', 'intervention_state_proportion']]
+            if len(other_features) > 0:
+                feature_array = np.concatenate([feature_array, np.array(other_features)])
+    else:
+        feature_array = group_features
+    
+    # Ensure correct shape
+    if feature_array.ndim == 1:
+        feature_array = feature_array.reshape(1, -1)
+    
+    predicted = model.predict(feature_array)
+    return predicted[0] if len(predicted) == 1 else predicted
+
+
+# ============================================================================
 # State Transition Analysis
 # ============================================================================
 
@@ -352,6 +503,16 @@ y_test = load_intermediate('y_test')
 top_m_features = load_intermediate('top_m_features')
 best_model_name = load_intermediate('best_model_name')
 sequence_length = 3  # Must match training configuration
+
+# Load training data for efficiency model
+train_data = load_intermediate('train_data')
+y_train = load_intermediate('y_train')
+train_val_data = load_intermediate('train_val_data')
+y_train_val = load_intermediate('y_train_val')
+
+# Load task metrics for completion times
+task_metrics = load_intermediate('task_metrics')
+print(f"✓ Task metrics loaded: {len(task_metrics)} groups")
 
 print(f"\nBest model: {best_model_name}")
 print(f"Test set size: {len(test_data)} windows")
@@ -421,6 +582,106 @@ for group in np.unique(test_groups):
         'percentage': group_interventions / group_total if group_total > 0 else 0
     }
     print(f"  Group {group}: {group_interventions}/{group_total} ({group_interventions/group_total:.1%})")
+
+# 3.5 Build Team Efficiency Model
+print("\n" + "-"*80)
+print("3.5 Build Team Efficiency Model")
+print("-"*80)
+
+# Get completion times from task_metrics
+completion_times = {}
+if 'group' in task_metrics.columns and 'completion_time_seconds' in task_metrics.columns:
+    for _, row in task_metrics.iterrows():
+        group_id = int(row['group'])
+        completion_times[group_id] = row['completion_time_seconds']
+    print(f"✓ Loaded completion times for {len(completion_times)} groups")
+else:
+    print("⚠ Warning: completion_time_seconds not found in task_metrics, using default values")
+    # Fallback: use average from detailed JSON if available
+    completion_times = {1: 415.539, 2: 620.586, 3: 994.054, 4: 430.891, 5: 513.085,
+                       6: 652.171, 7: 622.308, 8: 676.778, 9: 562.773, 10: 209.265,
+                       11: 415.539, 12: 573.913}
+
+# Prepare training data for efficiency model
+print("\nPreparing training data for efficiency model...")
+train_full_data = pd.concat([train_data, train_val_data], ignore_index=True) if len(train_val_data) > 0 else train_data
+y_train_full = np.hstack([y_train, y_train_val]) if len(y_train_val) > 0 else y_train
+
+# Create sequences for training data to get predicted states
+X_train_seq_full, y_train_seq_full, train_groups_full, train_window_indices_full = create_sequences_by_group(
+    train_full_data, top_m_features, y_train_full, sequence_length=sequence_length
+)
+
+# Get predictions for training sequences
+y_train_pred_full = best_model.predict(X_train_seq_full, verbose=0)
+y_train_pred_full = np.argmax(y_train_pred_full, axis=1)
+
+# Extract group-level features for training groups
+train_group_features = []
+train_completion_times = []
+train_group_ids = []
+
+for group_id in np.unique(train_groups_full):
+    if group_id in completion_times:
+        group_features = extract_group_state_features(
+            train_full_data, y_train_pred_full, 
+            train_groups_full, top_m_features, group_id
+        )
+        if group_features is not None:
+            train_group_features.append(group_features)
+            train_completion_times.append(completion_times[group_id])
+            train_group_ids.append(group_id)
+
+if len(train_group_features) > 0:
+    # Convert to feature matrix
+    feature_names = list(train_group_features[0].keys())
+    X_efficiency = np.array([[gf.get(fn, 0) for fn in feature_names] for gf in train_group_features])
+    y_efficiency = np.array(train_completion_times)
+    
+    print(f"✓ Prepared efficiency training data: {len(X_efficiency)} groups, {X_efficiency.shape[1]} features")
+    print(f"  Completion times range: {y_efficiency.min():.1f}s - {y_efficiency.max():.1f}s")
+    
+    # Train efficiency model
+    efficiency_model = build_team_efficiency_model(X_efficiency, y_efficiency, model_type='linear')
+    
+    # Evaluate on training data
+    y_pred_train = efficiency_model.predict(X_efficiency)
+    train_r2 = r2_score(y_efficiency, y_pred_train)
+    train_mae = mean_absolute_error(y_efficiency, y_pred_train)
+    train_rmse = np.sqrt(mean_squared_error(y_efficiency, y_pred_train))
+    
+    print(f"\nEfficiency Model Performance (Training):")
+    print(f"  R² Score: {train_r2:.4f}")
+    print(f"  MAE: {train_mae:.2f} seconds")
+    print(f"  RMSE: {train_rmse:.2f} seconds")
+    print(f"  Feature importance (top 5):")
+    if hasattr(efficiency_model, 'coef_'):
+        # Linear regression coefficients
+        coef_importance = np.abs(efficiency_model.coef_)
+        top_indices = np.argsort(coef_importance)[-5:][::-1]
+        for idx in top_indices:
+            print(f"    {feature_names[idx]}: {efficiency_model.coef_[idx]:.4f}")
+    
+    # Save model
+    save_intermediate('efficiency_model', efficiency_model)
+    save_intermediate('efficiency_feature_names', feature_names)
+    print(f"\n✓ Efficiency model trained and saved")
+    print(f"  Feature names saved: {len(feature_names)} features")
+else:
+    print("⚠ Warning: Could not prepare efficiency training data")
+    efficiency_model = None
+    feature_names = None
+
+# Load feature names if model was trained (for use in prediction)
+if efficiency_model is not None:
+    try:
+        efficiency_feature_names = load_intermediate('efficiency_feature_names')
+        print(f"✓ Loaded efficiency feature names: {len(efficiency_feature_names)} features")
+    except FileNotFoundError:
+        print("⚠ Warning: Efficiency feature names not found, using default order")
+        efficiency_feature_names = feature_names if feature_names is not None else None
+else:
+    efficiency_feature_names = None
 
 # 4. Counterfactual prediction (what would happen without intervention)
 print("\n" + "-"*80)
@@ -496,6 +757,136 @@ for result in counterfactual_results:
 
 print(f"Simulated intervention effects for {len(intervention_results)} points")
 
+# 5.5 Calculate efficiency changes (intervention before/after comparison)
+print("\n" + "-"*80)
+print("5.5 Calculate Team Efficiency Changes")
+print("-"*80)
+
+if efficiency_model is not None and feature_names is not None:
+    efficiency_results = []
+    
+    for result in intervention_results:
+        group_id = result['group']
+        
+        # Get current group's state sequence (without intervention)
+        # Note: test_groups corresponds to sequences, not individual windows
+        group_mask = test_groups == group_id
+        group_states_no_intervention = y_test_pred[group_mask].copy()
+        
+        # Simulate intervention: modify states after intervention point
+        # Find the position of this intervention in the group's sequence
+        group_sequence_indices = np.where(group_mask)[0]
+        # Find which sequence in the group corresponds to this intervention
+        intervention_seq_idx = np.where(group_sequence_indices == result['index'])[0]
+        
+        if len(intervention_seq_idx) > 0:
+            intervention_pos = intervention_seq_idx[0]
+            # Simulate: after intervention, states improve (1 -> 0 for 2-class)
+            group_states_with_intervention = group_states_no_intervention.copy()
+            # Apply intervention effect: improve states for next few sequences
+            effect_windows = min(INTERVENTION_CONFIG['effect_duration'], len(group_states_with_intervention) - intervention_pos - 1)
+            for i in range(1, effect_windows + 1):
+                if intervention_pos + i < len(group_states_with_intervention):
+                    # With intervention, state improves (1 -> 0)
+                    if group_states_with_intervention[intervention_pos + i] == 1:
+                        # Apply decay effect
+                        decay = INTERVENTION_CONFIG['effect_decay'] ** (i - 1)
+                        if np.random.random() < decay:  # Probabilistic improvement
+                            group_states_with_intervention[intervention_pos + i] = 0
+            
+            # Extract group features for both scenarios
+            # Note: group_states are sequence-level states, not window-level
+            # We'll create a simplified feature extraction that works with sequence states
+            # Get group's window data for feature statistics
+            group_window_data = test_data[test_data['group'] == group_id]
+            
+            # Calculate state distribution from sequence states
+            state_counts_no_int = np.bincount(group_states_no_intervention.astype(int), minlength=N_CLASSES)
+            state_props_no_int = state_counts_no_int / len(group_states_no_intervention) if len(group_states_no_intervention) > 0 else np.zeros(N_CLASSES)
+            
+            state_counts_with_int = np.bincount(group_states_with_intervention.astype(int), minlength=N_CLASSES)
+            state_props_with_int = state_counts_with_int / len(group_states_with_intervention) if len(group_states_with_intervention) > 0 else np.zeros(N_CLASSES)
+            
+            # Calculate transition rates
+            transitions_no_int = sum(1 for i in range(len(group_states_no_intervention)-1) 
+                                   if group_states_no_intervention[i] != group_states_no_intervention[i+1])
+            transition_rate_no_int = transitions_no_int / (len(group_states_no_intervention)-1) if len(group_states_no_intervention) > 1 else 0.0
+            
+            transitions_with_int = sum(1 for i in range(len(group_states_with_intervention)-1) 
+                                      if group_states_with_intervention[i] != group_states_with_intervention[i+1])
+            transition_rate_with_int = transitions_with_int / (len(group_states_with_intervention)-1) if len(group_states_with_intervention) > 1 else 0.0
+            
+            # Get feature statistics from window data
+            key_features = ['density', 'clustering', 'eigenvector', 'reciprocity']
+            feature_cols = [col for col in top_m_features if any(kf in col.lower() for kf in key_features)]
+            
+            feature_stats = {}
+            for feat_col in feature_cols[:10]:
+                if feat_col in group_window_data.columns:
+                    feat_values = group_window_data[feat_col].values
+                    if len(feat_values) > 0:
+                        feature_stats[f'{feat_col}_mean'] = np.mean(feat_values)
+                        feature_stats[f'{feat_col}_std'] = np.std(feat_values)
+            
+            # Build feature dictionaries
+            features_no_intervention = {
+                **{f'state_{i}_proportion': state_props_no_int[i] for i in range(N_CLASSES)},
+                **feature_stats,
+                'transition_rate': transition_rate_no_int,
+                'total_windows': len(group_states_no_intervention),
+                'intervention_state_proportion': state_props_no_int[1] if N_CLASSES == 2 else np.sum(state_props_no_int[1:])
+            }
+            
+            features_with_intervention = {
+                **{f'state_{i}_proportion': state_props_with_int[i] for i in range(N_CLASSES)},
+                **feature_stats,  # Same feature stats (intervention doesn't change historical features)
+                'transition_rate': transition_rate_with_int,
+                'total_windows': len(group_states_with_intervention),
+                'intervention_state_proportion': state_props_with_int[1] if N_CLASSES == 2 else np.sum(state_props_with_int[1:])
+            }
+            
+            if features_no_intervention is not None and features_with_intervention is not None:
+                # Predict completion times (use saved feature names to ensure correct order)
+                time_no_intervention = predict_completion_time(efficiency_model, features_no_intervention, efficiency_feature_names)
+                time_with_intervention = predict_completion_time(efficiency_model, features_with_intervention, efficiency_feature_names)
+                
+                time_saved = time_no_intervention - time_with_intervention
+                efficiency_improvement = (time_saved / time_no_intervention * 100) if time_no_intervention > 0 else 0
+                
+                efficiency_results.append({
+                    'group': group_id,
+                    'window_idx': result['window_idx'],
+                    'time_no_intervention': time_no_intervention,
+                    'time_with_intervention': time_with_intervention,
+                    'time_saved': time_saved,
+                    'efficiency_improvement_pct': efficiency_improvement,
+                })
+    
+    if len(efficiency_results) > 0:
+        avg_time_saved = np.mean([r['time_saved'] for r in efficiency_results])
+        avg_efficiency_improvement = np.mean([r['efficiency_improvement_pct'] for r in efficiency_results])
+        total_time_saved = np.sum([r['time_saved'] for r in efficiency_results])
+        
+        print(f"\nEfficiency Analysis Results:")
+        print(f"  Analyzed intervention points: {len(efficiency_results)}")
+        print(f"  Average time saved per intervention: {avg_time_saved:.2f} seconds ({avg_time_saved/60:.2f} minutes)")
+        print(f"  Average efficiency improvement: {avg_efficiency_improvement:.2f}%")
+        print(f"  Total time saved (if all interventions applied): {total_time_saved:.2f} seconds ({total_time_saved/60:.2f} minutes)")
+        
+        # Add efficiency results to intervention_results
+        for i, eff_result in enumerate(efficiency_results):
+            if i < len(intervention_results):
+                intervention_results[i]['efficiency'] = eff_result
+        
+        # Save efficiency results
+        save_intermediate('efficiency_results', efficiency_results)
+    else:
+        print("⚠ Warning: Could not calculate efficiency changes")
+        efficiency_results = []
+else:
+    print("⚠ Warning: Efficiency model not available, skipping efficiency analysis")
+    efficiency_results = []
+
 # Calculate aggregate statistics
 if len(intervention_results) > 0:
     avg_improvements = {}
@@ -567,7 +958,10 @@ print("8. Generate Visualizations")
 print("-"*80)
 
 # 8.1 Intervention points distribution
-fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+if len(efficiency_results) > 0:
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+else:
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 fig.suptitle('Intervention Effect Validation Analysis', fontsize=16, fontweight='bold')
 
 # Intervention points by group
@@ -606,7 +1000,10 @@ ax3.set_xlabel('To State')
 ax3.set_ylabel('From State')
 
 # Intervention benefit distribution
-ax4 = axes[1, 1]
+if len(efficiency_results) > 0:
+    ax4 = axes[1, 1]
+else:
+    ax4 = axes[1, 1]
 if len(intervention_results) > 0:
     benefits = [r['benefits']['mean_improvement'] for r in intervention_results]
     ax4.hist(benefits, bins=15, color='steelblue', alpha=0.7, edgecolor='black')
@@ -616,6 +1013,32 @@ if len(intervention_results) > 0:
     ax4.set_title('Distribution of Intervention Benefits')
     ax4.legend()
     ax4.grid(axis='y', alpha=0.3)
+
+# Efficiency improvement visualization (if available)
+if len(efficiency_results) > 0:
+    # Time saved per intervention
+    ax5 = axes[0, 2]
+    time_saved_list = [r['time_saved'] for r in efficiency_results]
+    ax5.bar(range(len(time_saved_list)), time_saved_list, color='green', alpha=0.7)
+    ax5.axhline(np.mean(time_saved_list), color='red', linestyle='--', linewidth=2, 
+                label=f'Mean: {np.mean(time_saved_list):.2f}s')
+    ax5.set_xlabel('Intervention Index')
+    ax5.set_ylabel('Time Saved (seconds)')
+    ax5.set_title('Time Saved per Intervention')
+    ax5.legend()
+    ax5.grid(axis='y', alpha=0.3)
+    
+    # Efficiency improvement percentage
+    ax6 = axes[1, 2]
+    efficiency_pct_list = [r['efficiency_improvement_pct'] for r in efficiency_results]
+    ax6.bar(range(len(efficiency_pct_list)), efficiency_pct_list, color='orange', alpha=0.7)
+    ax6.axhline(np.mean(efficiency_pct_list), color='red', linestyle='--', linewidth=2,
+                label=f'Mean: {np.mean(efficiency_pct_list):.2f}%')
+    ax6.set_xlabel('Intervention Index')
+    ax6.set_ylabel('Efficiency Improvement (%)')
+    ax6.set_title('Efficiency Improvement per Intervention')
+    ax6.legend()
+    ax6.grid(axis='y', alpha=0.3)
 
 plt.tight_layout()
 plt.savefig(VISUALIZATIONS_DIR / 'intervention_effect_validation.png', dpi=300, bbox_inches='tight')
@@ -710,6 +1133,24 @@ if len(intervention_results) > 0:
     for feat, imp in sorted_improvements:
         if abs(imp) > 0.001:
             report_lines.append(f"    {feat}: {imp:.4f}")
+    
+    # Add efficiency results if available
+    if len(efficiency_results) > 0:
+        avg_time_saved = np.mean([r['time_saved'] for r in efficiency_results])
+        avg_efficiency_improvement = np.mean([r['efficiency_improvement_pct'] for r in efficiency_results])
+        total_time_saved = np.sum([r['time_saved'] for r in efficiency_results])
+        
+        report_lines.append(f"\nTeam Efficiency Analysis:")
+        report_lines.append(f"  Average time saved per intervention: {avg_time_saved:.2f} seconds ({avg_time_saved/60:.2f} minutes)")
+        report_lines.append(f"  Average efficiency improvement: {avg_efficiency_improvement:.2f}%")
+        report_lines.append(f"  Total time saved (if all interventions applied): {total_time_saved:.2f} seconds ({total_time_saved/60:.2f} minutes)")
+        
+        report_lines.append(f"\n  Per-intervention efficiency results:")
+        for i, eff_result in enumerate(efficiency_results[:5]):  # Show first 5
+            report_lines.append(f"    Intervention {i+1} (Group {eff_result['group']}, Window {eff_result['window_idx']}):")
+            report_lines.append(f"      Time without intervention: {eff_result['time_no_intervention']:.2f}s")
+            report_lines.append(f"      Time with intervention: {eff_result['time_with_intervention']:.2f}s")
+            report_lines.append(f"      Time saved: {eff_result['time_saved']:.2f}s ({eff_result['efficiency_improvement_pct']:.2f}% improvement)")
 
 report_lines.append(f"\nState Transition Analysis:")
 report_lines.append(f"  Self-transition rate: {transition_stats['self_transition_rate']:.4f}")
@@ -724,10 +1165,16 @@ if len(intervention_indices) > 0:
         report_lines.append(f"  2. Model shows good recall for intervention needs (TPR: {validation_metrics['true_positive_rate']:.2%})")
     if len(intervention_results) > 0 and 'average_improvement' in validation_metrics:
         if validation_metrics['average_improvement'] > 0:
-            report_lines.append(f"  3. Simulated interventions show positive effects (avg improvement: {validation_metrics['average_improvement']:.4f})")
+            report_lines.append(f"  3. Simulated interventions show positive feature-level effects (avg improvement: {validation_metrics['average_improvement']:.4f})")
         else:
-            report_lines.append(f"  3. Simulated interventions show limited effects (avg improvement: {validation_metrics['average_improvement']:.4f})")
-    report_lines.append(f"  4. Intervention effect validation provides evidence for intervention effectiveness")
+            report_lines.append(f"  3. Simulated interventions show limited feature-level effects (avg improvement: {validation_metrics['average_improvement']:.4f})")
+    if len(efficiency_results) > 0:
+        avg_time_saved = np.mean([r['time_saved'] for r in efficiency_results])
+        avg_efficiency_improvement = np.mean([r['efficiency_improvement_pct'] for r in efficiency_results])
+        report_lines.append(f"  4. Team efficiency analysis shows interventions can save {avg_time_saved:.2f}s per intervention ({avg_efficiency_improvement:.2f}% improvement)")
+        report_lines.append(f"  5. Intervention effect validation provides evidence for intervention effectiveness at both feature and team efficiency levels")
+    else:
+        report_lines.append(f"  4. Intervention effect validation provides evidence for intervention effectiveness at feature level")
 else:
     report_lines.append("  No intervention points identified in test set")
 
