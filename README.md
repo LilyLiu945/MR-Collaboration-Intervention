@@ -4,7 +4,7 @@ EECS 215 — Data Mining & Modeling Project
 
 ## Team Members
 
-* Zhijie Liu (Lilith) — zhijiel9@uci.edu
+* Zhijie (Lily) Liu — zhijiel9@uci.edu
 * Yudong Wan — yudongw4@uci.edu
 * Kai Yao — kyao12@uci.edu
 * Yancheng Chen — yanchec2@uci.edu
