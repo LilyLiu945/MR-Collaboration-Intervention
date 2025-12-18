@@ -1,22 +1,23 @@
 """
-00 - 数据准备与划分
+00 - Data Preparation and Splitting
 
-本脚本完成以下任务：
-1. 加载窗口级数据（windowed_output）- 用于训练/预测
-2. 加载静态数据（task_metrics, session_output）- 用于后处理分析
-3. 数据探索和质量检查
-4. 按组划分数据（8组训练，4组测试）
-5. 特征工程（展开模态、聚合节点指标、标准化）
-6. 保存处理后的数据
+This script:
+1. Loads window-level data (windowed_output) for training/prediction
+2. Loads static data (task_metrics, session_output) for post-processing only
+3. Performs exploration and quality checks
+4. Splits data by group (8 train groups, 4 test groups)
+5. Feature engineering (pivot modalities, aggregate node metrics, standardize)
+6. Saves processed outputs
 
-**注意**：
-- 只使用windowed_output作为动态特征（用于训练/预测）
-- 静态特征（task_metrics, session_output）单独保存用于后处理分析
-- 验证集已合并到测试集（组9-12全部作为测试集）
+Notes:
+- Only windowed_output is used as dynamic features for training/prediction
+- Static datasets (task_metrics, session_output) are saved separately for post-processing
+- No separate validation split; an empty validation set is kept for compatibility
+- Test groups: [3, 6, 7, 8]; Train groups: [1, 2, 4, 5, 9, 10, 11, 12]
 """
 
 # ============================================================================
-# 配置部分（内嵌，无需外部config.py）
+# Config (inline; no external config.py)
 # ============================================================================
 
 import os
@@ -26,16 +27,16 @@ import numpy as np
 import pickle
 from sklearn.preprocessing import StandardScaler
 
-# 项目根目录
+# Project root directory
 PROJECT_ROOT = Path(__file__).parent
 
-# 数据路径
+# Data paths
 DATA_DIR = PROJECT_ROOT
 WINDOWED_METRICS_PATH = DATA_DIR / "windowed_output" / "data" / "windowed_metrics.csv"
 WINDOWED_NODES_PATH = DATA_DIR / "windowed_output" / "data" / "windowed_nodes.csv"
 TASK_METRICS_PATH = DATA_DIR / "task_metrics_output" / "task_metrics_summary.csv"
 
-# 输出路径
+# Output paths
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
 INTERMEDIATE_DIR = OUTPUT_DIR / "intermediate"
@@ -43,26 +44,26 @@ INTERMEDIATE_DIR.mkdir(exist_ok=True)
 REPORTS_DIR = OUTPUT_DIR / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
 
-# 数据划分配置
-# 根据窗口数统计：窗口数最多的4个组作为测试集
-# 组8(68), 组6(51), 组7(40), 组3(38) - 窗口数最多的4个组
-TEST_GROUPS = [3, 6, 7, 8]  # 测试集（窗口数最多的4个组）
-TRAIN_GROUPS = [1, 2, 4, 5, 9, 10, 11, 12]  # 训练集（其余8个组）
-# 注意：不再进行训练组内的时间划分，避免数据泄露
-# 注意：验证集已合并到测试集，简化数据划分
+# Data split config
+# Based on window counts: the 4 groups with most windows are used as test set
+# Group 8(68), Group 6(51), Group 7(40), Group 3(38)
+TEST_GROUPS = [3, 6, 7, 8]  # Test set (top 4 groups by window count)
+TRAIN_GROUPS = [1, 2, 4, 5, 9, 10, 11, 12]  # Train set (remaining 8 groups)
+# No temporal split within train groups to avoid leakage
+# No separate validation set; keep empty val set for downstream compatibility
 
-# 随机种子
+# Random seed
 RANDOM_STATE = 42
 np.random.seed(RANDOM_STATE)
 import random
 random.seed(RANDOM_STATE)
 
 # ============================================================================
-# 工具函数部分（内嵌，无需外部utils）
+# Utility functions (inline; no external utils)
 # ============================================================================
 
 def save_intermediate(name, data, directory=None):
-    """保存中间结果到intermediate目录"""
+    """Save intermediate artifacts to the intermediate directory."""
     if directory is None:
         directory = INTERMEDIATE_DIR
     filepath = directory / f"{name}.pkl"
@@ -72,7 +73,7 @@ def save_intermediate(name, data, directory=None):
 
 
 def load_intermediate(name, directory=None):
-    """从intermediate目录加载中间结果"""
+    """Load intermediate artifacts from the intermediate directory."""
     if directory is None:
         directory = INTERMEDIATE_DIR
     filepath = directory / f"{name}.pkl"
@@ -85,7 +86,7 @@ def load_intermediate(name, directory=None):
 
 
 def load_windowed_data():
-    """加载窗口级网络指标数据（用于训练/预测）"""
+    """Load window-level network metrics (for training/prediction)."""
     print("Loading windowed network metrics data...")
     windowed_df = pd.read_csv(WINDOWED_METRICS_PATH)
     print(f"✓ Windowed network metrics: {len(windowed_df)} rows, {len(windowed_df.columns)} columns")
@@ -93,15 +94,15 @@ def load_windowed_data():
 
 
 def load_windowed_nodes():
-    """加载窗口级节点数据（用于聚合特征）"""
+    """Load window-level node metrics (to be aggregated into window features)."""
     print("Loading windowed node data...")
     nodes_df = pd.read_csv(WINDOWED_NODES_PATH)
     print(f"✓ Windowed node data: {len(nodes_df)} rows, {len(nodes_df.columns)} columns")
     return nodes_df
 
 
-def check_data_quality(df, name="数据"):
-    """检查数据质量"""
+def check_data_quality(df, name="Data"):
+    """Basic data quality checks."""
     print(f"\n=== {name} Quality Check ===")
     print(f"Shape: {df.shape}")
     print(f"Missing values:")
@@ -116,7 +117,7 @@ def check_data_quality(df, name="数据"):
 
 def normalize_features(train_df, val_df, test_df, train_val_df=None, 
                       exclude_cols=None, scaler=None):
-    """使用训练集的统计量标准化所有数据"""
+    """Standardize features using training-set statistics."""
     if exclude_cols is None:
         exclude_cols = ['group', 'window', 'window_idx']
     
@@ -125,7 +126,7 @@ def normalize_features(train_df, val_df, test_df, train_val_df=None,
     X_train = train_df[feature_cols].copy()
     X_test = test_df[feature_cols].copy()
     
-    # 检查val_df是否为空
+    # Check whether val_df is empty
     val_is_empty = len(val_df) == 0
     
     if not val_is_empty:
@@ -148,10 +149,10 @@ def normalize_features(train_df, val_df, test_df, train_val_df=None,
             index=X_train.index
         )
     
-    # 处理验证集（可能为空）
+    # Validation set (may be empty)
     if val_is_empty:
         X_val_scaled = pd.DataFrame(columns=feature_cols)
-        val_scaled = val_df.copy()  # 保持原始结构
+        val_scaled = val_df.copy()  # Keep original structure
     else:
         X_val_scaled = pd.DataFrame(
             scaler.transform(X_val),
@@ -186,22 +187,22 @@ def normalize_features(train_df, val_df, test_df, train_val_df=None,
     return train_scaled, val_scaled, test_scaled, scaler
 
 # ============================================================================
-# 主程序部分
+# Main
 # ============================================================================
 
 print("\n" + "="*80)
 print("00 - Data Preparation and Splitting")
 print("="*80)
 
-# 1. 数据加载
+# 1. Data loading
 print("\n" + "-"*80)
 print("1. Data Loading")
 print("-"*80)
 print("\n**Strategy**:")
 print("- Load windowed_output (window-level dynamic features) - for training/prediction")
 print("  - windowed_metrics: Network-level metrics (density, clustering, etc.)")
-print("  - windowed_nodes: Node-level metrics (centrality, will be aggregated to group level)")
-print("- Load task_metrics and session_output (static features) - for post-processing analysis, not merged into training data")
+print("  - windowed_nodes: Node-level metrics (centrality; aggregated to (group, window) features)")
+print("- Load task_metrics and session_output (static features) - for post-processing only, not merged into training data")
 
 windowed_df = load_windowed_data()
 windowed_nodes_df = load_windowed_nodes()
@@ -220,7 +221,7 @@ except FileNotFoundError:
     session_nodes_df = None
     session_metrics_df = None
 
-# 2. 数据探索
+# 2. Data exploration
 print("\n" + "-"*80)
 print("2. Data Exploration")
 print("-"*80)
@@ -241,7 +242,7 @@ print("\n=== Static Data (for post-processing analysis only) ===")
 print(f"Task performance metrics: {task_df.shape}")
 print("Note: These data are not merged into training data, only for post-processing analysis")
 
-# 3. 特征工程
+# 3. Feature engineering
 print("\n" + "-"*80)
 print("3. Feature Engineering")
 print("-"*80)
@@ -266,7 +267,7 @@ for metric in metric_cols:
 if windowed_pivot_list:
     windowed_wide = pd.concat(windowed_pivot_list, axis=1)
     windowed_wide = windowed_wide.reset_index()
-    # 统一窗口列名
+    # Unify window column name
     if 'window' in windowed_wide.columns:
         windowed_wide = windowed_wide.rename(columns={'window': 'window_idx'})
     print(f"Shape after expansion: {windowed_wide.shape}")
@@ -283,22 +284,22 @@ if 'window' in windowed_wide.columns:
 print("\n3.2 Aggregate Windowed Node Metrics (Mean and Standard Deviation)")
 print("Aggregating node-level centrality metrics...")
 
-# 节点指标列（排除标识列）
+# Node metric columns (exclude identifiers)
 node_metric_cols = ['betweenness_centrality', 'degree_centrality', 
                     'eigenvector_centrality', 'closeness_centrality', 'degree']
 
-# 对每个窗口×模态的4个参与者计算均值和标准差
+# Compute mean/std across node/participant rows within each (group, window, modality)
 node_agg_list = []
 
 for metric in node_metric_cols:
     if metric in windowed_nodes_df.columns:
-        # 计算均值和标准差
+        # Mean and std
         agg_df = windowed_nodes_df.groupby(['group', 'window', 'modality'])[metric].agg([
             ('mean', 'mean'),
             ('std', 'std')
         ]).reset_index()
         
-        # 展开为宽格式
+        # Pivot to wide format
         pivot_mean = agg_df.pivot_table(
             index=['group', 'window'],
             columns='modality',
@@ -328,12 +329,11 @@ else:
     nodes_wide = windowed_wide[['group', 'window']].drop_duplicates()
 
 print("\n3.3 Merge Network Metrics and Node Metrics")
-# 确保nodes_wide的窗口列名与windowed_wide一致
+# Ensure window column name consistency
 if 'window' in nodes_wide.columns:
     nodes_wide = nodes_wide.rename(columns={'window': 'window_idx'})
 
-# 合并windowed_wide和nodes_wide
-# 使用left join确保保留所有windowed_wide的数据
+# Merge (left join to keep all windowed_wide rows)
 final_data = windowed_wide.merge(
     nodes_wide,
     on=['group', 'window_idx'],
@@ -380,14 +380,13 @@ if len(missing_stats) > 0:
 else:
     print("✓ No missing values")
 
-# 4. 数据划分
+# 4. Data splitting
 print("\n" + "-"*80)
 print("4. Data Splitting")
 print("-"*80)
 
 print("\n4.1 Split by Group")
 train_raw = final_data[final_data['group'].isin(TRAIN_GROUPS)].copy()
-# 测试集划分
 test_raw = final_data[final_data['group'].isin(TEST_GROUPS)].copy()
 
 print(f"Training groups: {TRAIN_GROUPS}")
@@ -399,10 +398,9 @@ print("\n4.2 Use All Training Group Data (No Temporal Splitting)")
 print("Strategy: Directly use all data from training groups as training set")
 print("Reason: Avoid data leakage from temporal splitting within groups, fully utilize training data")
 
-# 直接使用训练组的全部数据
 train_data = train_raw.copy().sort_values(['group', 'window_idx']).reset_index(drop=True)
 
-# 为了保持兼容性，train_val_data 和 val_data 设为空
+# Keep empty train_val_data and val_data for compatibility
 train_val_data = pd.DataFrame(columns=train_data.columns)
 val_data = pd.DataFrame(columns=train_data.columns)
 
@@ -414,10 +412,9 @@ print("\n4.3 Feature Standardization")
 print("Standardizing features...")
 
 exclude_cols = ['group', 'window_idx']
-# 创建空的val_data用于兼容性
-# normalize_features需要val_df参数，创建一个与train_data结构相同的空DataFrame
+# Create an empty val set for normalize_features compatibility
 empty_val = pd.DataFrame(columns=train_data.columns)
-# 确保empty_val有正确的索引类型（避免后续合并问题）
+# Match dtypes to avoid downstream issues
 empty_val = empty_val.astype(train_data.dtypes)
 train_scaled, val_scaled, test_scaled, scaler = normalize_features(
     train_data, empty_val, test_raw, train_val_df=None,
@@ -429,13 +426,13 @@ print("Standardization completed")
 print(f"Training set shape: {train_scaled.shape} (all data from groups {TRAIN_GROUPS})")
 print(f"Test set shape: {test_scaled.shape} (all data from groups {TEST_GROUPS}, the 4 groups with most windows)")
 
-# 5. 保存处理后的数据
+# 5. Save processed data
 print("\n" + "-"*80)
 print("5. Save Processed Data")
 print("-"*80)
 
 save_intermediate('train_data', train_scaled)
-# 保存空的 train_val_data 以保持兼容性（其他脚本会合并 train_data 和 train_val_data）
+# Save empty train_val_data for downstream scripts that expect to merge it
 save_intermediate('train_val_data', train_val_scaled)
 save_intermediate('val_data', val_scaled)
 save_intermediate('test_data', test_scaled)
@@ -454,7 +451,7 @@ print(f"\n✓ Training data saved to {INTERMEDIATE_DIR}")
 print(f"✓ Number of features: {len(feature_cols)} (only dynamic features from windowed_output)")
 print(f"✓ Static features saved separately (for post-processing analysis)")
 
-# 6. 数据划分报告
+# 6. Data splitting report
 print("\n" + "-"*80)
 print("6. Data Splitting Report")
 print("-"*80)
@@ -484,4 +481,3 @@ print("\n" + "="*80)
 print("Data preparation completed!")
 print("="*80)
 print("\nNext step: Run `01_hmm_modeling.py` for HMM modeling")
-
