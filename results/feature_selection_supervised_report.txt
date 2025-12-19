@@ -1,0 +1,34 @@
+============================================================
+Supervised Feature Selection Report
+============================================================
+
+Configuration:
+  Number of selected features: 20
+  Total number of features: 54
+
+Selected features:
+  1. density_fused (score: 0.9534)
+  2. degree_centrality_mean_fused (score: 0.7892)
+  3. eigenvector_fused (score: 0.7645)
+  4. eigenvector_centrality_mean_conversation (score: 0.7246)
+  5. density_conversation (score: 0.6087)
+  6. eigenvector_centrality_std_conversation (score: 0.6042)
+  7. reciprocity_fused (score: 0.5941)
+  8. eigenvector_conversation (score: 0.5806)
+  9. degree_mean_fused (score: 0.4634)
+  10. avg_clustering_conversation (score: 0.4539)
+  11. reciprocity_conversation (score: 0.4265)
+  12. betweenness_centrality_std_proximity (score: 0.4255)
+  13. degree_mean_conversation (score: 0.4180)
+  14. degree_std_conversation (score: 0.4008)
+  15. degree_mean_proximity (score: 0.3938)
+  16. degree_centrality_mean_conversation (score: 0.3895)
+  17. eigenvector_centrality_mean_fused (score: 0.3583)
+  18. degree_mean_shared_attention (score: 0.3028)
+  19. closeness_centrality_mean_proximity (score: 0.2919)
+  20. eigenvector_centrality_mean_shared_attention (score: 0.2859)
+
+Notes:
+  - Feature selection based on combined scores from 4 methods (RF importance, Mutual Information, LASSO, RFE)
+  - Performance evaluation will be conducted in subsequent time series model training
+  - Evaluating on training set would cause overfitting, results are meaningless

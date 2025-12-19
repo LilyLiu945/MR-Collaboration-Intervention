@@ -1,0 +1,45 @@
+============================================================
+Final Evaluation Report
+============================================================
+
+Model Information:
+  Best model: LSTM
+  Number of features: 20
+  Sequence length: 3
+
+Test Set Overall Performance:
+  Accuracy: 0.8162
+  Precision: 0.8162
+  Recall: 0.8162
+  F1 Score: 0.8162
+  AUC-ROC: 0.6426
+
+Confusion Matrix:
+  [[147, 17],
+   [17, 4]]
+
+Performance by Group:
+
+Group 3:
+  F1 Score: 0.7324
+  Accuracy: 0.6857
+  Precision: 0.7962
+  Recall: 0.6857
+
+Group 6:
+  F1 Score: 0.7485
+  Accuracy: 0.7708
+  Precision: 0.7310
+  Recall: 0.7708
+
+Group 7:
+  F1 Score: 0.9319
+  Accuracy: 0.9189
+  Precision: 0.9452
+  Recall: 0.9189
+
+Group 8:
+  F1 Score: 0.8473
+  Accuracy: 0.8615
+  Precision: 0.8385
+  Recall: 0.8615

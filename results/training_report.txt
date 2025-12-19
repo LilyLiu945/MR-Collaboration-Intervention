@@ -1,0 +1,32 @@
+============================================================
+Time Series Model Training Report
+============================================================
+
+Configuration:
+  Sequence length: 3
+  Number of features: 20
+
+Model Performance (Validation set: 20% split from training set, for model selection):
+
+LSTM:
+  F1 Score: 0.9535
+  Accuracy: 0.9535
+  Precision: 0.9535
+  Recall: 0.9535
+  AUC-ROC: 0.9295
+
+GRU:
+  F1 Score: 0.9535
+  Accuracy: 0.9535
+  Precision: 0.9535
+  Recall: 0.9535
+  AUC-ROC: 0.9551
+
+Transformer:
+  F1 Score: 0.9337
+  Accuracy: 0.9302
+  Precision: 0.9389
+  Recall: 0.9302
+  AUC-ROC: 0.9551
+
+Best model: LSTM

@@ -1,0 +1,21 @@
+============================================================
+HMM Modeling Report
+============================================================
+
+HMM Configuration:
+  Number of states: 4
+  Iterations: 100
+  Covariance type: full
+
+State distribution:
+  Training set: {0: 81, 1: 34, 2: 102, 3: 21}
+  Test set: {0: 109, 1: 23, 2: 65}
+
+State semantic analysis:
+  Detailed state feature analysis saved to: hmm_state_analysis.csv
+  Please check this file to understand feature values for each state and determine state meanings
+
+Label distribution (2 classes):
+  Training set - Label 0 (No intervention): 183, Label 1 (Need intervention): 55
+  Test set - Label 0 (No intervention): 174, Label 1 (Need intervention): 23
+  State mapping: {0: 0, 1: 1, 2: 0, 3: 1}
