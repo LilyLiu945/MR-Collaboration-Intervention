@@ -1,113 +1,126 @@
 """
-数据加载和保存工具函数
+Data I/O utilities
+
+This module provides:
+- Save/load intermediate artifacts as pickle files
+- Load raw CSV datasets (pairwise, windowed, task metrics)
+- Basic data quality checks (missing values, duplicates, dtypes)
 """
 
 import pickle
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
+
 import config
 
 
 def save_intermediate(name, data, directory=None):
     """
-    保存中间结果到intermediate目录
-    
-    Parameters:
-    -----------
+    Save an intermediate artifact to the intermediate directory.
+
+    Parameters
+    ----------
     name : str
-        文件名（不含扩展名）
-    data : any
-        要保存的数据
-    directory : Path, optional
-        保存目录，默认使用config.INTERMEDIATE_DIR
+        File stem (without extension).
+    data : Any
+        Python object to pickle.
+    directory : Path | None
+        Target directory; defaults to config.INTERMEDIATE_DIR.
     """
     if directory is None:
         directory = config.INTERMEDIATE_DIR
-    
+
+    # Ensure directory exists (safe even if it already exists)
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+
     filepath = directory / f"{name}.pkl"
-    with open(filepath, 'wb') as f:
+    with open(filepath, "wb") as f:
         pickle.dump(data, f)
-    print(f"已保存: {filepath}")
+    print(f"Saved: {filepath}")
 
 
 def load_intermediate(name, directory=None):
     """
-    从intermediate目录加载中间结果
-    
-    Parameters:
-    -----------
+    Load an intermediate artifact from the intermediate directory.
+
+    Parameters
+    ----------
     name : str
-        文件名（不含扩展名）
-    directory : Path, optional
-        加载目录，默认使用config.INTERMEDIATE_DIR
-    
-    Returns:
-    --------
-    data : any
-        加载的数据
+        File stem (without extension).
+    directory : Path | None
+        Source directory; defaults to config.INTERMEDIATE_DIR.
+
+    Returns
+    -------
+    Any
+        Unpickled Python object.
     """
     if directory is None:
         directory = config.INTERMEDIATE_DIR
-    
+
+    directory = Path(directory)
     filepath = directory / f"{name}.pkl"
     if not filepath.exists():
-        raise FileNotFoundError(f"文件不存在: {filepath}")
-    
-    with open(filepath, 'rb') as f:
+        raise FileNotFoundError(f"File not found: {filepath}")
+
+    with open(filepath, "rb") as f:
         data = pickle.load(f)
-    print(f"已加载: {filepath}")
+    print(f"Loaded: {filepath}")
     return data
 
 
 def load_all_data():
     """
-    加载所有原始数据文件
-    
-    Returns:
-    --------
+    Load all raw CSV datasets.
+
+    Returns
+    -------
     pairwise_df : pd.DataFrame
-        成对特征数据
+        Pairwise feature dataset.
     windowed_df : pd.DataFrame
-        窗口级网络指标数据
+        Window-level network metrics dataset.
     task_df : pd.DataFrame
-        任务性能指标数据
+        Task-level performance metrics dataset.
     """
-    print("正在加载数据文件...")
-    
-    # 加载成对特征
+    print("Loading raw data files...")
+
     pairwise_df = pd.read_csv(config.PAIRWISE_FEATURES_PATH)
-    print(f"✓ 成对特征数据: {len(pairwise_df)} 行, {len(pairwise_df.columns)} 列")
-    
-    # 加载窗口级网络指标
+    print(f"✓ Pairwise features: {len(pairwise_df)} rows, {len(pairwise_df.columns)} columns")
+
     windowed_df = pd.read_csv(config.WINDOWED_METRICS_PATH)
-    print(f"✓ 窗口级网络指标: {len(windowed_df)} 行, {len(windowed_df.columns)} 列")
-    
-    # 加载任务性能指标
+    print(f"✓ Windowed metrics: {len(windowed_df)} rows, {len(windowed_df.columns)} columns")
+
     task_df = pd.read_csv(config.TASK_METRICS_PATH)
-    print(f"✓ 任务性能指标: {len(task_df)} 行, {len(task_df.columns)} 列")
-    
+    print(f"✓ Task metrics: {len(task_df)} rows, {len(task_df.columns)} columns")
+
     return pairwise_df, windowed_df, task_df
 
 
-def check_data_quality(df, name="数据"):
+def check_data_quality(df, name="data"):
     """
-    检查数据质量
-    
-    Parameters:
-    -----------
+    Basic data quality checks: shape, missing values, duplicates, and dtypes.
+
+    Parameters
+    ----------
     df : pd.DataFrame
-        要检查的数据框
+        DataFrame to inspect.
     name : str
-        数据名称
+        Display name used in logs.
     """
-    print(f"\n=== {name}质量检查 ===")
-    print(f"形状: {df.shape}")
-    print(f"缺失值:")
+    print(f"\n=== Data quality check: {name} ===")
+    print(f"Shape: {df.shape}")
+
     missing = df.isnull().sum()
     if missing.sum() > 0:
-        print(missing[missing > 0])
+        print("Missing values (non-zero):")
+        print(missing[missing > 0].sort_values(ascending=False))
     else:
-        print("无缺失值")
-    print(f"重复行: {df.duplicated().sum()}")
-    print(f"数据类型:\n{df.dtypes.value_counts()}")
+        print("Missing values: none")
 
+    print(f"Duplicate rows: {df.duplicated().sum()}")
+
+    # Show dtype counts (e.g., float64/int64/object)
+    print("Dtype counts:")
+    print(df.dtypes.value_counts())
