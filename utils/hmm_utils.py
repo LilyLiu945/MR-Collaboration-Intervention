@@ -1,5 +1,10 @@
 """
-HMM建模工具函数
+HMM modeling utilities
+
+This module provides:
+- Train coarse-grained and fine-grained Gaussian HMMs (with KMeans initialization)
+- Predict HMM states
+- Map HMM states to labels for downstream supervised learning
 """
 
 import numpy as np
@@ -9,208 +14,218 @@ from sklearn.cluster import KMeans
 import config
 
 
-def train_coarse_hmm(X_train, n_states=None, n_iter=None, covariance_type=None, random_state=None):
+def train_coarse_hmm(
+    X_train,
+    n_states=None,
+    n_iter=None,
+    covariance_type=None,
+    random_state=None,
+):
     """
-    训练粗粒度HMM模型
-    
-    Parameters:
-    -----------
-    X_train : np.ndarray or pd.DataFrame
-        训练数据（每个组的时间序列）
-    n_states : int, optional
-        状态数，默认使用config.HMM_CONFIG['coarse_n_states']
-    n_iter : int, optional
-        迭代次数，默认使用config.HMM_CONFIG['n_iter']
-    covariance_type : str, optional
-        协方差类型，默认使用config.HMM_CONFIG['covariance_type']
-    random_state : int, optional
-        随机种子，默认使用config.HMM_CONFIG['random_state']
-    
-    Returns:
-    --------
-    model : GaussianHMM
-        训练好的HMM模型
+    Train a coarse-grained Gaussian HMM.
+
+    Parameters
+    ----------
+    X_train : np.ndarray | pd.DataFrame
+        Training data (n_samples, n_features).
+    n_states : int | None
+        Number of hidden states. Default: config.HMM_CONFIG['coarse_n_states'].
+    n_iter : int | None
+        EM iterations. Default: config.HMM_CONFIG['n_iter'].
+    covariance_type : str | None
+        Covariance type. Default: config.HMM_CONFIG['covariance_type'].
+    random_state : int | None
+        Random seed. Default: config.HMM_CONFIG['random_state'].
+
+    Returns
+    -------
+    hmm.GaussianHMM
+        Trained coarse HMM.
     """
     if n_states is None:
-        n_states = config.HMM_CONFIG['coarse_n_states']
+        n_states = config.HMM_CONFIG["coarse_n_states"]
     if n_iter is None:
-        n_iter = config.HMM_CONFIG['n_iter']
+        n_iter = config.HMM_CONFIG["n_iter"]
     if covariance_type is None:
-        covariance_type = config.HMM_CONFIG['covariance_type']
+        covariance_type = config.HMM_CONFIG["covariance_type"]
     if random_state is None:
-        random_state = config.HMM_CONFIG['random_state']
-    
-    # 转换为numpy数组
+        random_state = config.HMM_CONFIG["random_state"]
+
+    # Convert DataFrame to numpy array
     if isinstance(X_train, pd.DataFrame):
         X_train = X_train.values
-    
-    # 使用K-means初始化
+
+    # Initialize means via KMeans for a more stable start
     kmeans = KMeans(n_clusters=n_states, random_state=random_state, n_init=10)
     kmeans.fit(X_train)
-    
-    # 初始化HMM
-    # 注意：init_params='stc'表示初始化状态转移矩阵、协方差和初始概率
-    # 不包含'm'（均值），这样我们可以手动设置means_而不会被覆盖
+
+    # init_params excludes 'm' so we can set means_ manually (not overwritten)
     model = hmm.GaussianHMM(
         n_components=n_states,
         covariance_type=covariance_type,
         n_iter=n_iter,
         random_state=random_state,
-        init_params='stc',  # 初始化状态转移矩阵、协方差和初始概率（不包含均值）
+        init_params="stc",
     )
-    
-    # 设置初始均值（从K-means聚类中心）
     model.means_ = kmeans.cluster_centers_
-    
-    # 训练HMM
+
     model.fit(X_train)
-    
     return model
 
 
-def train_fine_hmm(X_train, low_comm_states, n_states=None, n_iter=None, 
-                   covariance_type=None, random_state=None):
+def train_fine_hmm(
+    X_train,
+    low_comm_mask,
+    n_states=None,
+    n_iter=None,
+    covariance_type=None,
+    random_state=None,
+):
     """
-    训练细粒度HMM模型（针对低通信状态）
-    
-    Parameters:
-    -----------
-    X_train : np.ndarray or pd.DataFrame
-        训练数据
-    low_comm_states : array-like
-        低通信状态的索引
-    n_states : int, optional
-        细粒度状态数，默认使用config.HMM_CONFIG['fine_n_states']
-    n_iter : int, optional
-        迭代次数
-    covariance_type : str, optional
-        协方差类型
-    random_state : int, optional
-        随机种子
-    
-    Returns:
-    --------
-    model : GaussianHMM
-        训练好的细粒度HMM模型
+    Train a fine-grained Gaussian HMM on samples flagged as "low communication".
+
+    Parameters
+    ----------
+    X_train : np.ndarray | pd.DataFrame
+        Full training data (n_samples, n_features).
+    low_comm_mask : array-like (bool) or array-like (int)
+        Mask or indices selecting the low-communication samples (from coarse state).
+    n_states : int | None
+        Number of fine states. Default: config.HMM_CONFIG['fine_n_states'].
+    n_iter : int | None
+        EM iterations. Default: config.HMM_CONFIG['n_iter'].
+    covariance_type : str | None
+        Covariance type. Default: config.HMM_CONFIG['covariance_type'].
+    random_state : int | None
+        Random seed. Default: config.HMM_CONFIG['random_state'].
+
+    Returns
+    -------
+    hmm.GaussianHMM | None
+        Trained fine HMM, or None if not enough samples.
     """
     if n_states is None:
-        n_states = config.HMM_CONFIG['fine_n_states']
+        n_states = config.HMM_CONFIG["fine_n_states"]
     if n_iter is None:
-        n_iter = config.HMM_CONFIG['n_iter']
+        n_iter = config.HMM_CONFIG["n_iter"]
     if covariance_type is None:
-        covariance_type = config.HMM_CONFIG['covariance_type']
+        covariance_type = config.HMM_CONFIG["covariance_type"]
     if random_state is None:
-        random_state = config.HMM_CONFIG['random_state']
-    
-    # 提取低通信状态的数据
+        random_state = config.HMM_CONFIG["random_state"]
+
+    # Select low-communication samples
     if isinstance(X_train, pd.DataFrame):
-        X_low = X_train.iloc[low_comm_states].values
+        X_values = X_train.values
     else:
-        X_low = X_train[low_comm_states]
-    
-    if len(X_low) < n_states:
-        print(f"警告：低通信状态数据量({len(X_low)})少于状态数({n_states})，跳过细粒度HMM训练")
+        X_values = X_train
+
+    low_comm_mask = np.asarray(low_comm_mask)
+    X_low = X_values[low_comm_mask] if low_comm_mask.dtype == bool else X_values[low_comm_mask]
+
+    if X_low.shape[0] < n_states:
+        print(f"Warning: low-communication sample count ({X_low.shape[0]}) < n_states ({n_states}); skip fine HMM.")
         return None
-    
-    # 使用K-means初始化
+
+    # KMeans initialization on the subset
     kmeans = KMeans(n_clusters=n_states, random_state=random_state, n_init=10)
     kmeans.fit(X_low)
-    
-    # 初始化HMM
-    # 注意：init_params='stc'表示初始化状态转移矩阵、协方差和初始概率
-    # 不包含'm'（均值），这样我们可以手动设置means_而不会被覆盖
+
     model = hmm.GaussianHMM(
         n_components=n_states,
         covariance_type=covariance_type,
         n_iter=n_iter,
         random_state=random_state,
-        init_params='stc',  # 初始化状态转移矩阵、协方差和初始概率（不包含均值）
+        init_params="stc",
     )
-    
-    # 设置初始均值（从K-means聚类中心）
     model.means_ = kmeans.cluster_centers_
-    
-    # 训练HMM
+
     model.fit(X_low)
-    
     return model
 
 
-def predict_hmm_states(model, X, group_col='group', window_col='window_idx'):
+def predict_hmm_states(model, X, group_col="group", window_col="window_idx"):
     """
-    使用HMM模型预测状态
-    
-    Parameters:
-    -----------
-    model : GaussianHMM
-        HMM模型
-    X : pd.DataFrame or np.ndarray
-        要预测的数据
+    Predict HMM hidden states for observations.
+
+    If X is a DataFrame, it will be sorted by (group, window) before predicting.
+
+    Parameters
+    ----------
+    model : hmm.GaussianHMM
+        Trained HMM.
+    X : pd.DataFrame | np.ndarray
+        Data to predict.
     group_col : str
-        组ID列名（如果X是DataFrame）
+        Group column name (only used if X is a DataFrame).
     window_col : str
-        窗口ID列名（如果X是DataFrame）
-    
-    Returns:
-    --------
-    states : np.ndarray
-        预测的状态序列
+        Window column name (only used if X is a DataFrame).
+
+    Returns
+    -------
+    np.ndarray
+        Predicted state sequence (aligned to the sorted order if DataFrame).
     """
     if isinstance(X, pd.DataFrame):
-        # 按组和时间排序
-        X_sorted = X.sort_values([group_col, window_col])
-        X_values = X_sorted.drop(columns=[group_col, window_col], errors='ignore').values
+        X_sorted = X.sort_values([group_col, window_col]).reset_index(drop=True)
+        X_values = X_sorted.drop(columns=[group_col, window_col], errors="ignore").values
     else:
         X_values = X
-    
-    # 预测状态
-    states = model.predict(X_values)
-    
-    return states
+
+    return model.predict(X_values)
 
 
-def map_states_to_labels(states, coarse_model, fine_model=None, 
-                        low_comm_state_idx=None, binary=True):
+def map_states_to_labels(
+    states,
+    low_comm_state_idx=None,
+    binary=True,
+    fine_states=None,
+    fine_to_binary=None,
+):
     """
-    将HMM状态映射到Y标签
-    
-    Parameters:
-    -----------
+    Map coarse HMM states (and optional fine states) to labels.
+
+    Parameters
+    ----------
     states : np.ndarray
-        粗粒度状态序列
-    coarse_model : GaussianHMM
-        粗粒度HMM模型
-    fine_model : GaussianHMM, optional
-        细粒度HMM模型
-    low_comm_state_idx : int, optional
-        低通信状态的索引（在粗粒度状态中）
+        Coarse state sequence.
+    low_comm_state_idx : int | None
+        Which coarse state is treated as "low communication". If None, uses last state id.
     binary : bool
-        是否使用二分类（True）或多分类（False）
-    
-    Returns:
-    --------
-    labels : np.ndarray
-        Y标签
-    """
-    if binary:
-        # 二分类：高/中等通信=0，低通信-需要干预=1
-        # 假设最后一个状态是低通信状态
-        if low_comm_state_idx is None:
-            low_comm_state_idx = coarse_model.n_components - 1
-        
-        labels = (states == low_comm_state_idx).astype(int)
-        
-        # 如果有细粒度模型，进一步细分低通信状态
-        if fine_model is not None:
-            low_comm_mask = states == low_comm_state_idx
-            if low_comm_mask.sum() > 0:
-                # 对低通信状态使用细粒度模型
-                # 这里简化处理：假设细粒度模型的第一个状态是需要干预的
-                # 实际应用中需要根据细粒度模型的预测结果来设置
-                pass  # TODO: 实现细粒度状态映射
-    else:
-        # 多分类：直接使用状态作为标签
-        labels = states
-    
-    return labels
+        If True: output binary labels (0=no intervention, 1=need intervention).
+        If False: output multi-class labels equal to coarse states.
+    fine_states : np.ndarray | None
+        Fine state sequence for the subset where coarse state == low_comm_state_idx.
+    fine_to_binary : dict[int, int] | None
+        Mapping from fine state -> binary label (only used when binary=True and fine_states is provided).
 
+    Returns
+    -------
+    np.ndarray
+        Label array.
+    """
+    states = np.asarray(states)
+
+    if not binary:
+        return states.copy()
+
+    if low_comm_state_idx is None:
+        low_comm_state_idx = int(states.max())  # default: treat the max state id as low-comm
+
+    labels = (states == low_comm_state_idx).astype(int)
+
+    # Optional refinement: within low-comm coarse state, use fine HMM states to decide intervention
+    if fine_states is not None:
+        fine_states = np.asarray(fine_states)
+        low_mask = states == low_comm_state_idx
+
+        if low_mask.sum() > 0:
+            if fine_to_binary is None:
+                # Default: map all fine states to intervention=1 (safe fallback)
+                fine_to_binary = {int(s): 1 for s in np.unique(fine_states)}
+
+            labels_low = np.array([fine_to_binary.get(int(s), 1) for s in fine_states], dtype=int)
+
+            # Assign refined labels back only to the low-comm positions
+            labels[low_mask] = labels_low[: low_mask.sum()]
+
+    return labels
